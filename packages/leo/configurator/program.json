@@ -1,0 +1,13 @@
+{
+  "program": "aleox_configurator_v1.aleo",
+  "version": "0.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "aleox_config_v1.aleo",
+      "location": "local",
+      "path": "../config"
+    }
+  ]
+}

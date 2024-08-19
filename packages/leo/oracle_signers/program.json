@@ -1,0 +1,13 @@
+{
+  "program": "aleox_oracle_signers_v1.aleo",
+  "version": "0.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "aleox_oracle_v1.aleo",
+      "location": "local",
+      "path": "../oracle"
+    }
+  ]
+}

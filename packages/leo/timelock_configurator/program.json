@@ -1,0 +1,18 @@
+{
+  "program": "aleox_timelock_configurator_v1.aleo",
+  "version": "0.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "aleox_timelock_v1.aleo",
+      "location": "local",
+      "path": "../timelock"
+    },
+    {
+      "name": "aleox_oracle_signers_v1.aleo",
+      "location": "local",
+      "path": "../oracle_signers"
+    }
+  ]
+}
