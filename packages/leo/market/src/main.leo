@@ -167,7 +167,9 @@ program aleox_market_v1.aleo {
 
     inline getNextFundingAmountPerSize(
         market: Market,
+        marketConfig: MarketConfig,
         marketData: MarketData,
+        prices: Prices,
         atBlock: u32,
     ) -> GetNextFundingAmountPerSize {
         let divisor: u128 = getPoolDivisor(market.longToken, market.shortToken);
@@ -196,30 +198,96 @@ program aleox_market_v1.aleo {
         // If the blockchain is not progressing / a market is disabled, funding fees
         // will continue to accumulate.
         // This should be a rare occurrence so funding fees are not adjusted for this case.
-        let durationInBlocks: u32 = getBlocksSinceFundingUpdated(marketData, atBlock);
+        let durationInBlocks: u128 = getBlocksSinceFundingUpdated(marketData, atBlock) as u128;
 
         let sizeOfLargerSide: u128 = longOpenInterest > shortOpenInterest ? longOpenInterest : shortOpenInterest;
 
-        let zeroCollateralPositionData: CollateralPositionData = CollateralPositionData {
-            longTokenIsLong: 0u128,
-            longTokenIsShort: 0u128,
-            shortTokenIsLong: 0u128,
-            shortTokenIsShort: 0u128,
-        };
+        let (fundingFactorPerSecond, longsPayShorts, nextSavedFundingFactorPerSecond): (u128, bool, i128) = getNextFundingFactorPerSecond(
+            marketConfig,
+            marketData,
+            longOpenInterest,
+            shortOpenInterest,
+            durationInBlocks,
+        );
+
+        let fundingUsd: u128 = sizeOfLargerSide * durationInBlocks * fundingFactorPerSecond / divisor;
+
+        let fundingUsdForLongCollateral: u128 = longsPayShorts ?
+            fundingUsd * marketData.openInterest.longTokenIsLong / longOpenInterest :
+            fundingUsd * marketData.openInterest.longTokenIsShort / shortOpenInterest;
+        let fundingUsdForShortCollateral: u128 = longsPayShorts ?
+            fundingUsd * marketData.openInterest.shortTokenIsLong / longOpenInterest :
+            fundingUsd * marketData.openInterest.shortTokenIsShort / shortOpenInterest;
+
         return GetNextFundingAmountPerSize {
-            longsPayShorts: false,
-            fundingFactorPerSecond: 0u128,
-            nextSavedFundingFactorPerSecond: 0i128,
-            fundingFeePerSizeDelta: zeroCollateralPositionData,
-            claimableFundingPerSizeDelta: zeroCollateralPositionData,
+            longsPayShorts,
+            fundingFactorPerSecond,
+            nextSavedFundingFactorPerSecond,
+            fundingFeePerSizeDelta: CollateralPositionData {
+                longTokenIsLong: longsPayShorts ? getFundingAmountPerSizeDelta(
+                    fundingUsdForLongCollateral,
+                    marketData.openInterest.longTokenIsLong,
+                    prices.longToken.max,
+                    true, // roundUpMagnitude
+                ) : 0u128,
+                longTokenIsShort: longsPayShorts ? 0u128 : getFundingAmountPerSizeDelta(
+                    fundingUsdForLongCollateral,
+                    marketData.openInterest.longTokenIsShort,
+                    prices.longToken.max,
+                    true, // roundUpMagnitude
+                ),
+                shortTokenIsLong: longsPayShorts ? getFundingAmountPerSizeDelta(
+                    fundingUsdForShortCollateral,
+                    marketData.openInterest.shortTokenIsLong,
+                    prices.shortToken.max,
+                    true, // roundUpMagnitude
+                ) : 0u128,
+                shortTokenIsShort: longsPayShorts ? 0u128 : getFundingAmountPerSizeDelta(
+                    fundingUsdForShortCollateral,
+                    marketData.openInterest.shortTokenIsShort,
+                    prices.shortToken.max,
+                    true, // roundUpMagnitude
+                ),
+            },
+            claimableFundingPerSizeDelta: CollateralPositionData {
+                longTokenIsLong: longsPayShorts ? 0u128 : getFundingAmountPerSizeDelta(
+                    fundingUsdForLongCollateral,
+                    longOpenInterest,
+                    prices.longToken.max,
+                    false, // roundUpMagnitude
+                ),
+                longTokenIsShort: longsPayShorts ?  getFundingAmountPerSizeDelta(
+                    fundingUsdForLongCollateral,
+                    shortOpenInterest,
+                    prices.longToken.max,
+                    false, // roundUpMagnitude
+                ): 0u128,
+                shortTokenIsLong: longsPayShorts ? 0u128 : getFundingAmountPerSizeDelta(
+                    fundingUsdForShortCollateral,
+                    longOpenInterest,
+                    prices.shortToken.max,
+                    false, // roundUpMagnitude
+                ),
+                shortTokenIsShort: longsPayShorts ? getFundingAmountPerSizeDelta(
+                    fundingUsdForShortCollateral,
+                    shortOpenInterest,
+                    prices.shortToken.max,
+                    false, // roundUpMagnitude
+                ) : 0u128,
+            },
         };
     }
 
+    const FundingRateNoChange: u8 = 0u8;
+    const FundingRateIncrease: u8 = 1u8;
+    const FundingRateDecrease: u8 = 2u8;
+
     inline getNextFundingFactorPerSecond(
         marketConfig: MarketConfig,
+        marketData: MarketData,
         longOpenInterest: u128,
         shortOpenInterest: u128,
-        durationInBlocks: u32,
+        durationInBlocks: u128,
     ) -> (u128, bool, i128) {
         let diffUsd: u128 = longOpenInterest > shortOpenInterest ? longOpenInterest.sub_wrapped(shortOpenInterest) : shortOpenInterest.sub_wrapped(longOpenInterest);
         let totalOpenInterest: u128 = longOpenInterest + shortOpenInterest;
@@ -233,8 +301,84 @@ program aleox_market_v1.aleo {
         let fundingExponentFactor: u128 = marketConfig.fundingExponentFactor;
 
         let diffUsdAfterExponent: u128 = diffUsd.pow(fundingExponentFactor as u32);
+        let diffUsdToOpenInterestFactor: u128 = diffUsdAfterExponent / totalOpenInterest;
 
-        return (0u128, true, 0i128);
+        if (marketConfig.fundingIncreaseFactorPerSecond == 0u128) {
+            // If there is no fundingIncreaseFactorPerSecond then return the static fundingFactor based on open interest difference.
+            let fundingFactorPerSecond: u128 = diffUsdToOpenInterestFactor * marketConfig.fundingFactor;
+
+            if (fundingFactorPerSecond > marketConfig.maxFundingFactorPerSecond) {
+                fundingFactorPerSecond = marketConfig.maxFundingFactorPerSecond;
+            }
+
+            return (
+                fundingFactorPerSecond,
+                longOpenInterest > shortOpenInterest,
+                0i128,
+            );
+        }
+
+        // If the savedFundingFactorPerSecond is positive then longs pay shorts.
+        // If the savedFundingFactorPerSecond is negative then shorts pay longs.
+        let savedFundingFactorPerSecondMagnitude: i128 = marketData.savedFundingFactorPerSecond.abs();
+
+        // Set the default of nextSavedFundingFactorPerSecond as the savedFundingFactorPerSecond.
+        let nextSavedFundingFactorPerSecond: i128 = marketData.savedFundingFactorPerSecond;
+
+        let fundingRateChangeType: u8 = FundingRateNoChange;
+
+        let isSkewTheSameDirectionAsFunding: bool = (marketData.savedFundingFactorPerSecond > 0i128 &&
+            longOpenInterest > shortOpenInterest) || (marketData.savedFundingFactorPerSecond < 0i128 &&
+            shortOpenInterest > longOpenInterest);
+
+        if (isSkewTheSameDirectionAsFunding) {
+            if (diffUsdToOpenInterestFactor > marketConfig.thresholdForStableFunding) {
+                fundingRateChangeType = FundingRateIncrease;
+            } else if (diffUsdToOpenInterestFactor < marketConfig.thresholdForDecreaseFunding) {
+                fundingRateChangeType = FundingRateDecrease;
+            }
+        } else {
+            // If the skew has changed, then the funding should increase in the opposite direction.
+            fundingRateChangeType = FundingRateIncrease;
+        }
+
+        if (fundingRateChangeType == FundingRateIncrease) {
+            let increaseValue: i128 = (diffUsdToOpenInterestFactor * marketConfig.fundingIncreaseFactorPerSecond * durationInBlocks) as i128;
+
+            // If there are more longs than shorts, then the savedFundingFactorPerSecond should increase.
+            if (longOpenInterest < shortOpenInterest) {
+                increaseValue = -increaseValue;
+            }
+
+            nextSavedFundingFactorPerSecond = marketData.savedFundingFactorPerSecond + increaseValue;
+        }
+
+        if (fundingRateChangeType == FundingRateDecrease && savedFundingFactorPerSecondMagnitude != 0i128) {
+            let decreaseValue: i128 = (marketConfig.fundingDecreaseFactorPerSecond * durationInBlocks) as i128;
+
+            let sign: i128 = marketData.savedFundingFactorPerSecond >= 0i128 ? 1i128 : -1i128;
+            if (savedFundingFactorPerSecondMagnitude <= decreaseValue) {
+                // Set the funding factor to 1 or -1 depending on the original savedFundingFactorPerSecond.
+                nextSavedFundingFactorPerSecond = sign;
+            } else {
+                // Reduce the original savedFundingFactorPerSecond while keeping the original sign of the savedFundingFactorPerSecond.
+                nextSavedFundingFactorPerSecond = (savedFundingFactorPerSecondMagnitude - decreaseValue) * sign;
+            }
+        }
+
+        nextSavedFundingFactorPerSecond = boundMagnitude(nextSavedFundingFactorPerSecond, 0u128, marketConfig.maxFundingFactorPerSecond);
+
+        let nextSavedFundingFactorPerSecondWithMinBound: i128 = boundMagnitude(
+            nextSavedFundingFactorPerSecond,
+            marketConfig.minFundingFactorPerSecond,
+            marketConfig.maxFundingFactorPerSecond,
+        );
+
+        return (
+            nextSavedFundingFactorPerSecondWithMinBound.abs() as u128,
+            nextSavedFundingFactorPerSecondWithMinBound > 0i128,
+            nextSavedFundingFactorPerSecond
+        );
     }
 
     inline getBlocksSinceFundingUpdated(
@@ -250,6 +394,34 @@ program aleox_market_v1.aleo {
 
     inline getPoolDivisor(longToken: field, shortToken: field) -> u128 {
         return longToken == shortToken ? 2u128 : 1u128;
+    }
+
+    inline getFundingAmountPerSizeDelta(
+        fundingUsd: u128,
+        openInterest: u128,
+        tokenPrice: u128,
+        roundUpMagnitude: bool,
+    ) -> u128 {
+        if (fundingUsd == 0u128 || openInterest == 0u128) {
+            return 0u128;
+        }
+        let fundingUsdPerSize: u128 = fundingUsd / openInterest;
+        if (roundUpMagnitude) {
+            return (fundingUsdPerSize + tokenPrice - 1u128) / tokenPrice;
+        } else {
+            return fundingUsdPerSize / tokenPrice;
+        }
+    }
+
+    inline boundMagnitude(value: i128, min: u128, max: u128) -> i128 {
+        let magnitude: u128 = value.abs() as u128;
+        if (magnitude < min) {
+            magnitude = min;
+        }
+        if (magnitude > max) {
+            magnitude = max;
+        }
+        return value >= 0i128 ? magnitude as i128 : -(magnitude as i128);
     }
 
     inline getOpenInterest(

@@ -23,6 +23,7 @@ program aleox_store_v1.aleo {
         atomicSwapFeeFactor: u128,
         minPositionImpactPoolAmount: u128,
         positionImpactPoolDistRate: u128, // positionImpactPoolDistributionRate
+
         fundingFactor: u128,
         fundingExponentFactor: u128,
         fundingIncreaseFactorPerSecond: u128,
@@ -162,7 +163,7 @@ program aleox_store_v1.aleo {
     struct MarketData {
         positionImpactPoolAmount: u128,
         positionImpactPoolDistAtBlock: u32, // positionImpactPoolDistributedAtBlock
-        savedFundingFactorPerSecond: u128,
+        savedFundingFactorPerSecond: i128,
         fundingUpdatedAtBlock: u32,
         openInterest: CollateralPositionData,
         openInterestInTokens: CollateralPositionData,
