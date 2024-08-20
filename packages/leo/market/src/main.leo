@@ -91,6 +91,10 @@ program aleox_market_v1.aleo {
             collateralSum: marketData.collateralSum,
             fundingFeeAmountPerSize: marketData.fundingFeeAmountPerSize,
             claimableFundingAmountPerSize: marketData.claimableFundingAmountPerSize,
+            cumulativeBorrowingFactor: marketData.cumulativeBorrowingFactor,
+            cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
+            totalBorrowing: marketData.totalBorrowing,
+            poolAmount: marketData.poolAmount,
         };
 
         return (marketData, finalizeDistributePositionImpactPool(atBlock));
@@ -145,16 +149,88 @@ program aleox_market_v1.aleo {
         return atBlock - distributedAt;
     }
 
-    async transition updateFundingState(
+    async transition updateFundingAndBorrowingState(
+        public market: Market,
+        public generalConfig: GeneralConfig,
+        public marketConfig: MarketConfig,
         public marketData: MarketData,
         public prices: Prices,
-    ) -> Future {
-        return finalizeUpdateFundingState();
+        public atBlock: u32,
+    )-> (MarketData, Future) {
+        marketData = updateFundingState(
+            market,
+            marketConfig,
+            marketData,
+            prices,
+            atBlock,
+        );
+
+        marketData = updateCumulativeBorrowingFactor(
+            market,
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            atBlock,
+        );
+
+        return (marketData, finalizeFundingAndBorrowingState(atBlock));
     }
 
-    async function finalizeUpdateFundingState() {
-        let i: u8 = 0u8;
-        assert(i == 0u8);
+    async function finalizeFundingAndBorrowingState(
+        atBlock: u32,
+    ) {
+        assert(block.height - atBlock < 100u32); // TODO
+    }
+
+    inline updateFundingState(
+        market: Market,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        atBlock: u32,
+    ) -> MarketData {
+        let result: GetNextFundingAmountPerSize = getNextFundingAmountPerSize(
+            market,
+            marketConfig,
+            marketData,
+            prices,
+            atBlock,
+        );
+
+        let f1: CollateralPositionData = marketData.fundingFeeAmountPerSize;
+        let f2: CollateralPositionData = result.fundingFeePerSizeDelta;
+        let fundingFeeAmountPerSize: CollateralPositionData = CollateralPositionData {
+            longTokenIsLong: f1.longTokenIsLong + f2.longTokenIsLong,
+            shortTokenIsLong: f1.shortTokenIsLong + f2.shortTokenIsLong,
+            longTokenIsShort: f1.longTokenIsShort + f2.longTokenIsShort,
+            shortTokenIsShort: f1.shortTokenIsShort + f2.shortTokenIsShort,
+        };
+
+        let c1: CollateralPositionData = marketData.claimableFundingAmountPerSize;
+        let c2: CollateralPositionData = result.claimableFundingPerSizeDelta;
+        let claimableFundingAmountPerSize: CollateralPositionData = CollateralPositionData {
+            longTokenIsLong: c1.longTokenIsLong + c2.longTokenIsLong,
+            shortTokenIsLong: c1.shortTokenIsLong + c2.shortTokenIsLong,
+            longTokenIsShort: c1.longTokenIsShort + c2.longTokenIsShort,
+            shortTokenIsShort: c1.shortTokenIsShort + c2.shortTokenIsShort,
+        };
+
+        return MarketData {
+            positionImpactPoolAmount: marketData.positionImpactPoolAmount,
+            positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            savedFundingFactorPerSecond: result.nextSavedFundingFactorPerSecond,
+            fundingUpdatedAtBlock: atBlock,
+            openInterest: marketData.openInterest,
+            openInterestInTokens: marketData.openInterestInTokens,
+            collateralSum: marketData.collateralSum,
+            fundingFeeAmountPerSize,
+            claimableFundingAmountPerSize,
+            cumulativeBorrowingFactor: marketData.cumulativeBorrowingFactor,
+            cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
+            totalBorrowing: marketData.totalBorrowing,
+            poolAmount: marketData.poolAmount,
+        };
     }
 
     struct GetNextFundingAmountPerSize {
@@ -413,6 +489,178 @@ program aleox_market_v1.aleo {
         }
     }
 
+    inline updateCumulativeBorrowingFactor(
+        market: Market,
+        generalConfig: GeneralConfig,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        atBlock: u32,
+    ) -> MarketData {
+        let longDelta: u128 = getNextCumulativeBorrowingFactor(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            true, // isLong
+            atBlock,
+        ).1;
+
+        let shortDelta: u128 = getNextCumulativeBorrowingFactor(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            false, // isLong
+            atBlock,
+        ).1;
+
+        return MarketData {
+            positionImpactPoolAmount: marketData.positionImpactPoolAmount,
+            positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
+            fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
+            openInterest: marketData.openInterest,
+            openInterestInTokens: marketData.openInterestInTokens,
+            collateralSum: marketData.collateralSum,
+            fundingFeeAmountPerSize: marketData.fundingFeeAmountPerSize,
+            claimableFundingAmountPerSize: marketData.claimableFundingAmountPerSize,
+            cumulativeBorrowingFactor: PositionData {
+                long: marketData.cumulativeBorrowingFactor.long + longDelta,
+                short: marketData.cumulativeBorrowingFactor.short + shortDelta,
+            },
+            cumulativeBFUpdatedAtBlock: PositionAtBlock {
+                long: atBlock,
+                short: atBlock,
+            },
+            totalBorrowing: marketData.totalBorrowing,
+            poolAmount: marketData.poolAmount,
+        };
+    }
+
+    inline getNextCumulativeBorrowingFactor(
+        generalConfig: GeneralConfig,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        atBlock: u32,
+    ) -> (u128, u128) {
+        let durationInBlocks: u128 = getBlocksSinceCumulativeBorrowingFactorUpdated(marketData, isLong, atBlock) as u128;
+        let borrowingFactorPerSecond: u128 = getBorrowingFactorPerSecond(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            isLong,
+        );
+
+        let cumulativeBorrowingFactor: u128 = isLong ? marketData.cumulativeBorrowingFactor.long : marketData.cumulativeBorrowingFactor.short;
+
+        let delta: u128 = durationInBlocks * borrowingFactorPerSecond;
+        let nextCumulativeBorrowingFactor: u128 = cumulativeBorrowingFactor + delta;
+        return (nextCumulativeBorrowingFactor, delta);
+    }
+
+    inline getBorrowingFactorPerSecond(
+        generalConfig: GeneralConfig,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+    ) -> u128 {
+        let reservedUsd: u128 = getReservedUsd(marketData, prices, isLong);
+        if (reservedUsd == 0u128) {
+            return 0u128;
+        }
+
+        if (generalConfig.skipBorrowingFeeForSmallerSide) {
+            let longOpenInterest: u128 = getOpenInterest(marketData, true);
+            let shortOpenInterest: u128 = getOpenInterest(marketData, false);
+
+            if (isLong && longOpenInterest < shortOpenInterest) {
+                return 0u128;
+            }
+            if (!isLong && shortOpenInterest < longOpenInterest) {
+                return 0u128;
+            }
+        }
+
+        let poolUsd: u128 = getPoolUsdWithoutPnl(marketData, prices, isLong, false);
+        assert(poolUsd > 0u128);
+
+        let optimalUsageFactor: u128 = isLong ? marketConfig.optimalUsageFactor.long : marketConfig.optimalUsageFactor.short;
+
+        if (optimalUsageFactor > 0u128) {
+        }
+
+        let borrowingExponentFactor: u128 = isLong ? marketConfig.borrowingExponentFactor.long : marketConfig.borrowingExponentFactor.short;
+        let reservedUsdAfterExponent: u128 = reservedUsd.pow(borrowingExponentFactor as u32);
+
+        let reservedUsdToPoolFactor: u128 = reservedUsdAfterExponent / poolUsd;
+        let borrowingFactor: u128 = isLong ? marketConfig.borrowingFactor.long : marketConfig.borrowingFactor.short;
+
+        return reservedUsdToPoolFactor * borrowingFactor;
+    }
+
+    inline getPoolUsdWithoutPnl(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        maximize: bool,
+    ) -> u128 {
+        let poolAmount: u128 = isLong ? marketData.poolAmount.long : marketData.poolAmount.short;
+        let tokenPrice: u128 = maximize ?
+            (isLong ? prices.longToken.max : prices.shortToken.max) :
+            (isLong ? prices.longToken.min : prices.shortToken.min);
+
+        return poolAmount * tokenPrice;
+    }
+
+    inline getReservedUsd(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+    ) -> u128 {
+        if (isLong) {
+            let openInterestInTokens: u128 = getOpenInterestInTokens(marketData, isLong);
+            return openInterestInTokens * prices.indexToken.max;
+        } else {
+            return getOpenInterest(marketData, isLong);
+        }
+    }
+
+    inline getOpenInterest(
+        marketData: MarketData,
+        isLong: bool,
+    ) -> u128 {
+        let interest: CollateralPositionData = marketData.openInterest;
+        return isLong ?
+            interest.longTokenIsLong + interest.shortTokenIsLong :
+            interest.longTokenIsShort + interest.shortTokenIsShort;
+    }
+
+    inline getOpenInterestInTokens(
+        marketData: MarketData,
+        isLong: bool,
+    ) -> u128 {
+        let tokens: CollateralPositionData = marketData.openInterestInTokens;
+        return isLong ?
+            tokens.longTokenIsLong + tokens.shortTokenIsLong :
+            tokens.longTokenIsShort + tokens.shortTokenIsShort;
+    }
+
+    inline getBlocksSinceCumulativeBorrowingFactorUpdated(
+        marketData: MarketData,
+        isLong: bool,
+        atBlock: u32,
+    ) -> u32 {
+        let updatedAt: PositionAtBlock = marketData.cumulativeBFUpdatedAtBlock;
+        return isLong ?
+            updatedAt.long == 0u32 ? 0u32 : atBlock - updatedAt.long :
+            updatedAt.short == 0u32 ? 0u32 : atBlock - updatedAt.short;
+    }
+
     inline boundMagnitude(value: i128, min: u128, max: u128) -> i128 {
         let magnitude: u128 = value.abs() as u128;
         if (magnitude < min) {
@@ -422,11 +670,5 @@ program aleox_market_v1.aleo {
             magnitude = max;
         }
         return value >= 0i128 ? magnitude as i128 : -(magnitude as i128);
-    }
-
-    inline getOpenInterest(
-        marketData: MarketData,
-        divisor: u128,
-    ) {
     }
 }

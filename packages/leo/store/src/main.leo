@@ -32,6 +32,10 @@ program aleox_store_v1.aleo {
         maxFundingFactorPerSecond: u128,
         thresholdForStableFunding: u128,
         thresholdForDecreaseFunding: u128,
+
+        optimalUsageFactor: PositionData,
+        borrowingFactor: PositionData,
+        borrowingExponentFactor: PositionData,
     }
 
     // market => MarketConfig
@@ -170,6 +174,10 @@ program aleox_store_v1.aleo {
         collateralSum: CollateralPositionData,
         fundingFeeAmountPerSize: CollateralPositionData,
         claimableFundingAmountPerSize: CollateralPositionData,
+        cumulativeBorrowingFactor: PositionData,
+        cumulativeBFUpdatedAtBlock: PositionAtBlock, // cumulativeBorrowingFactorUpdatedAtBlock
+        totalBorrowing: PositionData,
+        poolAmount: CollateralData,
     }
 
     struct CollateralPositionData {
@@ -177,6 +185,21 @@ program aleox_store_v1.aleo {
         shortTokenIsLong: u128,
         longTokenIsShort: u128,
         shortTokenIsShort: u128,
+    }
+
+    struct CollateralData {
+        long: u128,
+        short: u128,
+    }
+
+    struct PositionData {
+        long: u128,
+        short: u128,
+    }
+
+    struct PositionAtBlock {
+        long: u32,
+        short: u32,
     }
 
     // market => MarketData
