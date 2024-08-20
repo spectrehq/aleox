@@ -1,8 +1,8 @@
-import aleox_config_v1.aleo;
+import aleox_store_v1.aleo;
 
 program aleox_configurator_v1.aleo {
     async transition setGeneralConfig(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetGeneralConfig(f);
     }
@@ -12,14 +12,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setFeeReceiver(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetFeeReceiver(f, cfg);
     }
 
     async function finalizeSetFeeReceiver(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.holdingAddress == cfg.holdingAddress &&
             c.maxAutoCancelOrders == cfg.maxAutoCancelOrders &&
@@ -34,14 +34,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setHoldingAddress(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetHoldingAddress(f, cfg);
     }
 
     async function finalizeSetHoldingAddress(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.maxAutoCancelOrders == cfg.maxAutoCancelOrders &&
@@ -56,14 +56,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setMaxAutoCancelOrders(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetMaxAutoCancelOrders(f, cfg);
     }
 
     async function finalizeSetMaxAutoCancelOrders(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&
@@ -78,14 +78,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setRequestExpirationBlocks(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetRequestExpirationBlocks(f, cfg);
     }
 
     async function finalizeSetRequestExpirationBlocks(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&
@@ -100,14 +100,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setMinCollateralUsd(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetMinCollateralUsd(f, cfg);
     }
 
     async function finalizeSetMinCollateralUsd(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&
@@ -122,14 +122,14 @@ program aleox_configurator_v1.aleo {
     }
 
     async transition setMinPositionSizeUsd(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetMinPositionSizeUsd(f, cfg);
     }
 
     async function finalizeSetMinPositionSizeUsd(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&
@@ -145,14 +145,14 @@ program aleox_configurator_v1.aleo {
 
     // setMaxFundingFactorPerSecondLimit
     async transition setMaxFundingFactorPerSecLimit(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetMaxFundingFactorPerSecLimit(f, cfg);
     }
 
     async function finalizeSetMaxFundingFactorPerSecLimit(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&
@@ -168,14 +168,14 @@ program aleox_configurator_v1.aleo {
 
     // setSkipBorrowingFeeForSmallerSide
     async transition setSkipBorrowingFeeForSmaller(public cfg: GeneralConfig) -> Future {
-        let f: Future = aleox_config_v1.aleo/setGeneralConfig(cfg);
+        let f: Future = aleox_store_v1.aleo/setGeneralConfig(cfg);
 
         return finalizeSetSkipBorrowingFeeForSmaller(f, cfg);
     }
 
     async function finalizeSetSkipBorrowingFeeForSmaller(f: Future, cfg: GeneralConfig) {
         // Ensure that other configuration fields are not changed.
-        let c: GeneralConfig = aleox_config_v1.aleo/general.get(0u8);
+        let c: GeneralConfig = aleox_store_v1.aleo/generalConfig.get(0u8);
         assert(
             c.feeReceiver == cfg.feeReceiver &&
             c.holdingAddress == cfg.holdingAddress &&

@@ -5,9 +5,9 @@
   "license": "MIT",
   "dependencies": [
     {
-      "name": "aleox_config_v1.aleo",
+      "name": "aleox_store_v1.aleo",
       "location": "local",
-      "path": "../config"
+      "path": "../store"
     }
   ]
 }

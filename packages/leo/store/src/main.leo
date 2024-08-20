@@ -1,4 +1,4 @@
-program aleox_config_v1.aleo {
+program aleox_store_v1.aleo {
     struct GeneralConfig {
         feeReceiver: address,
         holdingAddress: address,
@@ -11,7 +11,7 @@ program aleox_config_v1.aleo {
     }
 
     // 0u8 => GeneralConfig
-    mapping general: u8 => GeneralConfig;
+    mapping generalConfig: u8 => GeneralConfig;
 
     struct MarketConfig {
         isMarketDisabled: bool,
@@ -21,24 +21,20 @@ program aleox_config_v1.aleo {
         maxPositionImpactFactorForLiq: u128, // maxPositionImpactFactorForLiquidations
         swapImpactExponentFactor: u128,
         atomicSwapFeeFactor: u128,
-        positionImpactPoolAmount: u128,
         minPositionImpactPoolAmount: u128,
         positionImpactPoolDistRate: u128, // positionImpactPoolDistributionRate
-        positionImpactPoolDistAtBlock: u32, // positionImpactPoolDistributedAtBlock
         fundingFactor: u128,
         fundingExponentFactor: u128,
-        savedFundingFactorPerSecond: u128,
         fundingIncreaseFactorPerSecond: u128,
         fundingDecreaseFactorPerSecond: u128,
         minFundingFactorPerSecond: u128,
         maxFundingFactorPerSecond: u128,
         thresholdForStableFunding: u128,
         thresholdForDecreaseFunding: u128,
-        fundingUpdatedAtBlock: u32,
     }
 
-    // hash(MarketConfig) => MarketConfig
-    mapping market: field => MarketConfig;
+    // market => MarketConfig
+    mapping marketConfig: field => MarketConfig;
 
     struct MarketTokenKey {
         market: field,
@@ -59,7 +55,7 @@ program aleox_config_v1.aleo {
     }
 
     // hash(MarketTokenKey) => MarketTokenConfig
-    mapping marketToken: field => MarketTokenConfig;
+    mapping marketTokenConfig: field => MarketTokenConfig;
 
     struct MarketTokenAccountKey {
         market: field,
@@ -76,7 +72,7 @@ program aleox_config_v1.aleo {
     }
 
     // hash(MarketTokenAccountKey) => MarketTokenAccountConfig
-    mapping marketTokenAccount: field => MarketTokenAccountConfig;
+    mapping marketTokenAccountConfig: field => MarketTokenAccountConfig;
 
     struct MarketIsLongKey {
         market: field,
@@ -104,7 +100,7 @@ program aleox_config_v1.aleo {
     }
 
     // hash(MarketIsLongKey) => MarketIsLongConfig
-    mapping marketIsLong: field => MarketIsLongConfig;
+    mapping marketIsLongConfig: field => MarketIsLongConfig;
 
     struct MarketIsPositiveKey {
         market: field,
@@ -120,7 +116,7 @@ program aleox_config_v1.aleo {
     }
 
     // hash(MarketIsPositiveKey) => MarketIsPositiveConfig
-    mapping marketIsPositive: field => MarketIsPositiveConfig;
+    mapping marketIsPositiveConfig: field => MarketIsPositiveConfig;
 
     struct MarketCollateralTokenIsLongKey {
         market: field,
@@ -137,7 +133,7 @@ program aleox_config_v1.aleo {
     }
 
     // hash(MarketCollateralTokenIsLongKey) => MarketCTILConfig
-    mapping marketCollateralTokenIsLong: field => MarketCTILConfig;
+    mapping marketCTILConfig: field => MarketCTILConfig;
 
     struct ModuleConfig {
         createDepositDisabled: bool,
@@ -161,13 +157,43 @@ program aleox_config_v1.aleo {
     }
 
     // module => ModuleConfig
-    mapping module: address => ModuleConfig;
+    mapping moduleConfig: address => ModuleConfig;
+
+    struct MarketData {
+        positionImpactPoolAmount: u128,
+        positionImpactPoolDistAtBlock: u32, // positionImpactPoolDistributedAtBlock
+        savedFundingFactorPerSecond: u128,
+        fundingUpdatedAtBlock: u32,
+        openInterest: CollateralPositionData,
+        openInterestInTokens: CollateralPositionData,
+        collateralSum: CollateralPositionData,
+        fundingFeeAmountPerSize: CollateralPositionData,
+        claimableFundingAmountPerSize: CollateralPositionData,
+    }
+
+    struct CollateralPositionData {
+        longTokenIsLong: u128,
+        shortTokenIsLong: u128,
+        longTokenIsShort: u128,
+        shortTokenIsShort: u128,
+    }
+
+    // market => MarketData
+    mapping marketData: field => MarketData;
 
     async transition setGeneralConfig(public cfg: GeneralConfig) -> Future {
         return finalizeSetGeneralConfig(cfg);
     }
 
     async function finalizeSetGeneralConfig(cfg: GeneralConfig) {
-        general.set(0u8, cfg);
+        generalConfig.set(0u8, cfg);
+    }
+
+    async transition setMarketData(public market: field, public data: MarketData) -> Future {
+        return finalizeSetMarketData(market, data);
+    }
+
+    async function finalizeSetMarketData(market: field, data: MarketData) {
+        marketData.set(market, data);
     }
 }

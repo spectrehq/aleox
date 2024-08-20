@@ -27,7 +27,6 @@ program aleox_order_v1.aleo {
         account: address,
         receiver: address,
         cancellationReceiver: address,
-        uiFeeReceiver: address,
         market: field,
         initialCollateralToken: field,
         swapPath: [field; 2],

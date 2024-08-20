@@ -1,14 +1,9 @@
 {
-  "program": "aleox_market_v1.aleo",
+  "program": "aleox_deposit_v1.aleo",
   "version": "0.0.0",
   "description": "",
   "license": "MIT",
   "dependencies": [
-    {
-      "name": "credits.aleo",
-      "location": "network",
-      "network": "testnet"
-    },
     {
       "name": "multi_token_support_program.aleo",
       "location": "network",
@@ -18,6 +13,11 @@
       "name": "aleox_store_v1.aleo",
       "location": "local",
       "path": "../store"
+    },
+    {
+      "name": "aleox_market_v1.aleo",
+      "location": "local",
+      "path": "../market"
     },
     {
       "name": "aleox_oracle_v1.aleo",
