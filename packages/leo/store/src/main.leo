@@ -8,6 +8,9 @@ program aleox_store_v1.aleo {
         minPositionSizeUsd: u128,
         maxFundingFactorPerSecondLimit: u128,
         skipBorrowingFeeForSmallerSide: bool,
+        positionFeeReceiverFactor: u128,
+        swapFeeReceiverFactor: u128,
+        borrowingFeeReceiverFactor: u128,
     }
 
     // 0u8 => GeneralConfig
@@ -36,6 +39,14 @@ program aleox_store_v1.aleo {
         optimalUsageFactor: PositionData,
         borrowingFactor: PositionData,
         borrowingExponentFactor: PositionData,
+
+        maxPnlFactorForTraders: PositionData,
+        maxPnlFactorForAdl: PositionData,
+        minPnlFactorAfterAdl: PositionData,
+        maxPnlFactorForDeposits: PositionData,
+        maxPnlFactorForWithdrawals: PositionData,
+
+        swapFeeFactor: PositionData,
     }
 
     // market => MarketConfig
@@ -89,11 +100,6 @@ program aleox_store_v1.aleo {
         maxOpenInterest: u128,
         reserveFactor: u128,
         openInterestReserveFactor: u128,
-        maxPnlFactorForTraders: u128,
-        maxPnlFactorForAdl: u128,
-        minPnlFactorAfterAdl: u128,
-        maxPnlFactorForDeposits: u128,
-        maxPnlFactorForWithdrawals: u128,
         optimalUsageFactor: u128,
         baseBorrowingFactor: u128,
         aboveOUBFactor: u128, // aboveOptimalUsageBorrowingFactor
@@ -167,6 +173,7 @@ program aleox_store_v1.aleo {
     struct MarketData {
         positionImpactPoolAmount: u128,
         positionImpactPoolDistAtBlock: u32, // positionImpactPoolDistributedAtBlock
+        swapImpactPoolAmount: CollateralData,
         savedFundingFactorPerSecond: i128,
         fundingUpdatedAtBlock: u32,
         openInterest: CollateralPositionData,
@@ -178,6 +185,7 @@ program aleox_store_v1.aleo {
         cumulativeBFUpdatedAtBlock: PositionAtBlock, // cumulativeBorrowingFactorUpdatedAtBlock
         totalBorrowing: PositionData,
         poolAmount: CollateralData,
+        claimableFeeAmount: CollateralData,
     }
 
     struct CollateralPositionData {

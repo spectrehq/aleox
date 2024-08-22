@@ -6,6 +6,8 @@ import aleox_oracle_v1.aleo;
 program aleox_deposit_v1.aleo {
     const CREDITS_RESERVED_TOKEN_ID: field = 3443843282313283355522573239085696902919850365217539366784739393210722344986field;
 
+    const RECEIVER_FOR_FIRST_DEPOSIT: address = aleo1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3ljyzc; // 1field as address
+
     struct Deposit {
         account: address,
         receiver: address,
@@ -185,22 +187,71 @@ program aleox_deposit_v1.aleo {
 
     struct ExecuteDepositParams {
         key_: u32, // 'key' is a reserved keyword
+        market: Market,
         prices: Prices,
         keeper: address,
         includeVirtualInventoryImpact: bool,
+        isFirstDeposit: bool,
+        atBlock: u32,
     }
 
     async transition executeDeposit(
         public params: ExecuteDepositParams,
         public deposit: Deposit,
+        public generalConfig: GeneralConfig,
+        public marketConfig: MarketConfig,
+        public marketData: MarketData,
     ) -> Future {
-        return finalizeExecuteDeposit(params, deposit);
+        assert(!marketConfig.isMarketDisabled);
+
+        assert(params.prices.minBlock >= deposit.updatedAtBlock &&
+            params.prices.maxBlock <= deposit.updatedAtBlock + generalConfig.requestExpirationBlocks
+        );
+
+        validateFirstDeposit(marketConfig, deposit, params.isFirstDeposit);
+
+        let (marketData1, f1): (MarketData, Future) = aleox_market_v1.aleo/distributePositionImpactPool(
+            marketConfig,
+            marketData,
+            params.atBlock,
+        );
+        marketData = marketData1;
+
+        let (marketData2, f2): (MarketData, Future) = aleox_market_v1.aleo/updateFundingAndBorrowingState(
+            params.market,
+            generalConfig,
+            marketConfig,
+            marketData,
+            params.prices,
+            params.atBlock,
+        );
+        marketData = marketData2;
+
+        aleox_market_v1.aleo/validateMaxPnl(
+            marketConfig,
+            marketData,
+            params.prices,
+            3u8, // PnlFactorForDeposits
+            3u8, // PnlFactorForDeposits
+        );
+
+        return finalizeExecuteDeposit(
+            f1,
+            f2,
+            params,
+            deposit,
+        );
     }
 
     async function finalizeExecuteDeposit(
+        f1: Future,
+        f2: Future,
         params: ExecuteDepositParams,
         deposit: Deposit,
     ) {
+        f1.await();
+        f2.await();
+
         let key: u32 = params.key_;
 
         // Remove deposit.
@@ -224,6 +275,52 @@ program aleox_deposit_v1.aleo {
             depositByKey.remove(key);
         }
 
-        assert(params.prices.minBlock >= deposit.updatedAtBlock);
+        // Validate whether this is the first deposit.
+        let metadata: TokenMetadata = multi_token_support_program.aleo/registered_tokens.get(deposit.market);
+        assert(params.isFirstDeposit == (metadata.supply == 0u128));
+    }
+
+    // This method validates that a specified minimum number of market tokens are locked.
+    // This can be used to help ensure a minimum amount of liquidity for a market.
+    // This also helps to prevent manipulation of the market token price by the first depositor,
+    // since it may be possible to deposit a small amount of tokens on the first deposit
+    // to cause a high market token price due to rounding of the amount of tokens minted.
+    inline validateFirstDeposit(
+        marketConfig: MarketConfig,
+        deposit: Deposit,
+        isFirstDeposit: bool,
+    ) {
+        if (!isFirstDeposit) {
+            return;
+        }
+
+        // Return if there is no minMarketTokens requirement.
+        if (marketConfig.minMarketTokensForFirstDeposit == 0u128) {
+            return;
+        }
+
+        assert(deposit.receiver == RECEIVER_FOR_FIRST_DEPOSIT);
+        assert(deposit.minMarketTokens >= marketConfig.minMarketTokensForFirstDeposit);
+    }
+
+    struct ExecuteDepositParams_ {
+        account: address,
+        receiver: address,
+        tokenIn: field, // the token to deposit, either the market.longToken or market.shortToken
+        tokenOut: field, // the other token, if tokenIn is market.longToken then tokenOut is market.shortToken and vice versa
+        tokenInPrice: Price,
+        tokenOutPrice: Price,
+        amount: u128,
+        priceImpactUsd: i128,
+
+        generalConfig: GeneralConfig,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+    }
+
+    inline executeDeposit_(
+        params: ExecuteDepositParams,
+        params_: ExecuteDepositParams_,
+    ) {
     }
 }

@@ -3,6 +3,15 @@ import aleox_store_v1.aleo;
 import aleox_oracle_v1.aleo;
 
 program aleox_market_v1.aleo {
+    const PRECISION_U: u128 = 10_000_000_000_000_000_000_000u128; // 10^22
+    const PRECISION_I: i128 = 10_000_000_000_000_000_000_000i128; // 10^22
+    const MARKET_TOKEN_PRECISION_U: u128 = 1_000_000u128; // 10^6
+    const MARKET_TOKEN_PRECISION_I: i128 = 1_000_000i128; // 10^6
+    const USD_DIVISOR_U: u128 = 10_000_000_000_000_000u128; // 10^16; 16 = 22 - 6
+    const USD_DIVISOR_I: i128 = 10_000_000_000_000_000i128; // 10^16; 16 = 22 - 6
+    const FACTOR_PRECISION_U: u128 = 10_000u128; // 10^4
+    const FACTOR_PRECISION_I: i128 = 10_000i128; // 10^4
+
     struct Market {
         marketToken: field,
         indexToken: field,
@@ -84,6 +93,7 @@ program aleox_market_v1.aleo {
         marketData = MarketData {
             positionImpactPoolAmount: marketData.positionImpactPoolAmount - distributionAmount,
             positionImpactPoolDistAtBlock: atBlock,
+            swapImpactPoolAmount: marketData.swapImpactPoolAmount,
             savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
             fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
             openInterest: marketData.openInterest,
@@ -95,6 +105,7 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableFeeAmount: marketData.claimableFeeAmount,
         };
 
         return (marketData, finalizeDistributePositionImpactPool(atBlock));
@@ -104,6 +115,18 @@ program aleox_market_v1.aleo {
         atBlock: u32,
     ) {
         assert(block.height - atBlock < 100u32); // TODO
+    }
+
+    inline getNextPositionImpactPoolAmount(
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        atBlock: u32,
+    ) -> u128 {
+        return getPendingPositionImpactPoolDistributionAmount(
+            marketConfig,
+            marketData,
+            atBlock,
+        ).1;
     }
 
     inline getPendingPositionImpactPoolDistributionAmount(
@@ -219,6 +242,7 @@ program aleox_market_v1.aleo {
         return MarketData {
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            swapImpactPoolAmount: marketData.swapImpactPoolAmount,
             savedFundingFactorPerSecond: result.nextSavedFundingFactorPerSecond,
             fundingUpdatedAtBlock: atBlock,
             openInterest: marketData.openInterest,
@@ -230,6 +254,7 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableFeeAmount: marketData.claimableFeeAmount,
         };
     }
 
@@ -518,6 +543,7 @@ program aleox_market_v1.aleo {
         return MarketData {
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            swapImpactPoolAmount: marketData.swapImpactPoolAmount,
             savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
             fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
             openInterest: marketData.openInterest,
@@ -535,6 +561,7 @@ program aleox_market_v1.aleo {
             },
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableFeeAmount: marketData.claimableFeeAmount,
         };
     }
 
@@ -603,6 +630,30 @@ program aleox_market_v1.aleo {
         return reservedUsdToPoolFactor * borrowingFactor;
     }
 
+    inline getTotalPendingBorrowingFees(
+        generalConfig: GeneralConfig,
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        atBlock: u32,
+    ) -> u128 {
+        let openInterest: u128 = getOpenInterest(marketData, isLong);
+
+        let nextCumulativeBorrowingFactor: u128 = getNextCumulativeBorrowingFactor(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            isLong,
+            atBlock,
+        ).0;
+
+        let totalBorrowing: u128 = isLong ? marketData.totalBorrowing.long : marketData.totalBorrowing.short;
+
+        return openInterest * nextCumulativeBorrowingFactor / FACTOR_PRECISION_U - totalBorrowing;
+    }
+
     inline getPoolUsdWithoutPnl(
         marketData: MarketData,
         prices: Prices,
@@ -615,6 +666,123 @@ program aleox_market_v1.aleo {
             (isLong ? prices.longToken.min : prices.shortToken.min);
 
         return poolAmount * tokenPrice;
+    }
+
+    transition validateMaxPnl(
+        public marketConfig: MarketConfig,
+        public marketData: MarketData,
+        public prices: Prices,
+        public pnlFactorTypeForLongs: u8,
+        public pnlFactorTypeForShorts: u8,
+    ) {
+        let (isPnlFactorExceededForLongs, pnlToPoolFactorForLongs, maxPnlFactorForLongs): (bool, i128, u128) = isPnlFactorExceeded(
+            marketConfig,
+            marketData,
+            prices,
+            true, // isLong
+            pnlFactorTypeForLongs,
+        );
+
+        let (isPnlFactorExceededForShorts, pnlToPoolFactorForShorts, maxPnlFactorForShorts): (bool, i128, u128) = isPnlFactorExceeded(
+            marketConfig,
+            marketData,
+            prices,
+            false, // isLong
+            pnlFactorTypeForShorts,
+        );
+
+        assert(!isPnlFactorExceededForLongs && !isPnlFactorExceededForShorts);
+    }
+
+    const PnlFactorForTraders: u8 = 0u8;
+    const PnlFactorForAdl: u8 = 1u8;
+    const PnlFactorAfterAdl: u8 = 2u8;
+    const PnlFactorForDeposits: u8 = 3u8;
+    const PnlFactorForWithdrawals: u8 = 4u8;
+
+    inline getMaxPnlFactor(
+        marketConfig: MarketConfig,
+        isLong: bool,
+        pnlFactorType: u8,
+    ) -> u128 {
+        let maxPnlFactor: PositionData = pnlFactorType == PnlFactorForTraders ? marketConfig.maxPnlFactorForTraders :
+            pnlFactorType == PnlFactorForAdl ? marketConfig.maxPnlFactorForAdl :
+            pnlFactorType == PnlFactorAfterAdl ? marketConfig.minPnlFactorAfterAdl :
+            pnlFactorType == PnlFactorForDeposits ? marketConfig.maxPnlFactorForDeposits :
+            marketConfig.maxPnlFactorForWithdrawals;
+        return isLong ? maxPnlFactor.long : maxPnlFactor.short;
+    }
+
+    inline isPnlFactorExceeded(
+        marketConfig: MarketConfig,
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        pnlFactorType: u8,
+    ) -> (bool, i128, u128) {
+        let pnlToPoolFactor: i128 = getPnlToPoolFactor(marketData, prices, isLong, true);
+        let maxPnlFactor: u128 = getMaxPnlFactor(marketConfig, isLong, pnlFactorType);
+
+        let isExceeded: bool = pnlToPoolFactor > 0i128 && pnlToPoolFactor as u128 > maxPnlFactor;
+
+        return (isExceeded, pnlToPoolFactor, maxPnlFactor);
+    }
+
+    inline getPnlToPoolFactor(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        maximize: bool,
+    ) -> i128 {
+        let poolUsd: u128 = getPoolUsdWithoutPnl(marketData, prices, isLong, maximize);
+        if (poolUsd == 0u128) {
+            return 0i128;
+        }
+
+        let pnl: i128 = getPnl(
+            marketData,
+            prices,
+            isLong,
+            maximize,
+        );
+
+        return pnl * FACTOR_PRECISION_I / poolUsd as i128;
+    }
+
+    inline getPnl(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        maximize: bool,
+    ) -> i128 {
+        let openInterest: i128 = getOpenInterest(marketData, isLong) as i128;
+        let openInterestInTokens: u128 = getOpenInterestInTokens(marketData, isLong);
+        if (openInterest == 0i128 || openInterestInTokens == 0u128) {
+            return 0i128;
+        }
+
+        let price: u128 = pickPriceForPnl(prices.indexToken, isLong, maximize);
+
+        // `openInterest` is the cost of all positions, `openInterestValue` is the current worth of all positions.
+        let openInterestValue: i128 = (openInterestInTokens * price) as i128;
+        return isLong ? openInterestValue - openInterest : openInterest - openInterestValue;
+    }
+
+    inline getCappedPnl(
+        marketConfig: MarketConfig,
+        isLong: bool,
+        pnl: i128,
+        poolUsd: u128,
+        pnlFactorType: u8,
+    ) -> i128 {
+        if (pnl < 0i128) {
+            return pnl;
+        }
+
+        let maxPnlFactor: u128 = getMaxPnlFactor(marketConfig, isLong, pnlFactorType);
+        let maxPnl: i128 = (poolUsd * maxPnlFactor / FACTOR_PRECISION_U) as i128;
+
+        return pnl > maxPnl ? maxPnl : pnl;
     }
 
     inline getReservedUsd(
@@ -670,5 +838,236 @@ program aleox_market_v1.aleo {
             magnitude = max;
         }
         return value >= 0i128 ? magnitude as i128 : -(magnitude as i128);
+    }
+
+    inline pickPrice(price: Price, maximize: bool) -> u128 {
+        return maximize ? price.max : price.min;
+    }
+
+    inline pickPriceForPnl(price: Price, isLong: bool, maximize: bool) -> u128 {
+        // For long positions, pick the larger price to maximize pnl.
+        // For short positions, pick the smaller price to maximize pnl.
+        return isLong ? (maximize ? price.max : price.min) : (maximize ? price.min : price.max);
+    }
+
+    struct MarketPoolValueInfo {
+        poolValue: i128,
+        longPnl: i128,
+        shortPnl: i128,
+        netPnl: i128,
+
+        longTokenAmount: u128,
+        shortTokenAmount: u128,
+        longTokenUsd: u128,
+        shortTokenUsd: u128,
+
+        totalBorrowingFees: u128,
+        borrowingFeePoolFactor: u128,
+
+        impactPoolAmount: u128,
+    }
+
+    transition getPoolValueInfo(
+        public generalConfig: GeneralConfig,
+        public marketConfig: MarketConfig,
+        public marketData: MarketData,
+        public prices: Prices,
+        public pnlFactorType: u8,
+        public maximize: bool,
+        public atBlock: u32,
+    ) -> MarketPoolValueInfo {
+        let longTokenAmount: u128 = marketData.poolAmount.long;
+        let shortTokenAmount: u128 = marketData.poolAmount.short;
+
+        let longTokenUsd: u128 = longTokenAmount * pickPrice(prices.longToken, maximize);
+        let shortTokenUsd: u128 = shortTokenAmount * pickPrice(prices.shortToken, maximize);
+
+        let poolValue: i128 = (longTokenUsd + shortTokenUsd) as i128;
+
+        let totalBorrowingFees: u128 = getTotalPendingBorrowingFees(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            true,
+            atBlock,
+        );
+
+        totalBorrowingFees += getTotalPendingBorrowingFees(
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+            false,
+            atBlock,
+        );
+
+        let borrowingFeePoolFactor: u128 = FACTOR_PRECISION_U - generalConfig.borrowingFeeReceiverFactor;
+        poolValue += (totalBorrowingFees * borrowingFeePoolFactor / FACTOR_PRECISION_U) as i128;
+
+        let longPnl: i128 = getPnl(
+            marketData,
+            prices,
+            true,
+            !maximize,
+        );
+
+        longPnl = getCappedPnl(
+            marketConfig,
+            true,
+            longPnl,
+            longTokenUsd,
+            pnlFactorType,
+        );
+
+        let shortPnl: i128 = getPnl(
+            marketData,
+            prices,
+            false,
+            !maximize,
+        );
+
+        shortPnl = getCappedPnl(
+            marketConfig,
+            false,
+            shortPnl,
+            shortTokenUsd,
+            pnlFactorType,
+        );
+
+        let netPnl: i128 = longPnl + shortPnl;
+        poolValue -= netPnl;
+
+        let impactPoolAmount: u128 = getNextPositionImpactPoolAmount(
+            marketConfig,
+            marketData,
+            atBlock,
+        );
+        let impactPoolUsd: u128 = impactPoolAmount * pickPrice(prices.indexToken, !maximize);
+
+        poolValue -= impactPoolUsd as i128;
+
+        return MarketPoolValueInfo {
+            poolValue,
+            longPnl,
+            shortPnl,
+            netPnl,
+            longTokenAmount,
+            shortTokenAmount,
+            longTokenUsd,
+            shortTokenUsd,
+            totalBorrowingFees,
+            borrowingFeePoolFactor,
+            impactPoolAmount,
+        };
+    }
+
+    transition applySwapImpactWithCap(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        priceImpactUsd: i128,
+    ) -> (MarketData, i128, u128) {
+        let (impactAmount, cappedDiffUsd): (i128, u128) = getSwapImpactAmountWithCap(
+            marketData,
+            prices,
+            isLong,
+            priceImpactUsd,
+        );
+
+        let swapImpactPoolAmount: u128 = isLong ?
+            marketData.swapImpactPoolAmount.long :
+            marketData.swapImpactPoolAmount.short;
+
+        // If there is a positive impact, the impact pool amount should be reduced.
+        // If there is a negative impact, the impact pool amount should be increased.
+        swapImpactPoolAmount = applyBoundedDeltaToUint(swapImpactPoolAmount, -impactAmount);
+
+        marketData = MarketData {
+            positionImpactPoolAmount: marketData.positionImpactPoolAmount,
+            positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            swapImpactPoolAmount: CollateralData {
+                long: isLong ? swapImpactPoolAmount: marketData.swapImpactPoolAmount.long,
+                short: isLong ? marketData.swapImpactPoolAmount.short : swapImpactPoolAmount,
+            },
+            savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
+            fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
+            openInterest: marketData.openInterest,
+            openInterestInTokens: marketData.openInterestInTokens,
+            collateralSum: marketData.collateralSum,
+            fundingFeeAmountPerSize: marketData.fundingFeeAmountPerSize,
+            claimableFundingAmountPerSize: marketData.claimableFundingAmountPerSize,
+            cumulativeBorrowingFactor: marketData.cumulativeBorrowingFactor,
+            cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
+            totalBorrowing: marketData.totalBorrowing,
+            poolAmount: marketData.poolAmount,
+            claimableFeeAmount: marketData.claimableFeeAmount,
+        };
+
+        return (marketData, impactAmount, cappedDiffUsd);
+    }
+
+    inline getSwapImpactAmountWithCap(
+        marketData: MarketData,
+        prices: Prices,
+        isLong: bool,
+        priceImpactUsd: i128,
+    ) -> (i128, u128) {
+        let tokenPrice: Price = isLong ? prices.longToken : prices.shortToken;
+
+        if (priceImpactUsd > 0i128) {
+            let impactAmount: i128 = priceImpactUsd / tokenPrice.max as i128;
+
+            let maxImpactAmount: i128 = (isLong ?
+                marketData.swapImpactPoolAmount.long :
+                marketData.swapImpactPoolAmount.short
+            ) as i128;
+
+            let cappedDiffUsd: u128 = 0u128;
+            if (impactAmount > maxImpactAmount) {
+                cappedDiffUsd = (impactAmount - maxImpactAmount) as u128 * tokenPrice.max;
+                impactAmount = maxImpactAmount;
+            }
+
+            return (impactAmount, cappedDiffUsd);
+        } else {
+            let impactAmount: i128 = roundUpMagnitudeDivision(priceImpactUsd, tokenPrice.min);
+            return (impactAmount, 0u128);
+        }
+    }
+
+    inline roundUpMagnitudeDivision(a: i128, b: u128) -> i128 {
+        let b_: i128 = b as i128;
+        return a < 0i128 ? (a - b_ + 1i128) / b_ : (a + b_ - 1i128) / b_;
+    }
+
+    inline applyBoundedDeltaToUint(value: u128, delta: i128) -> u128 {
+        let deltaAbs: u128 = delta.abs() as u128;
+        return delta > 0i128 ?
+            value + deltaAbs :
+            (value < deltaAbs ? 0u128 : value - deltaAbs);
+    }
+
+    transition usdToMarketTokenAmount(
+        usdValue: u128,
+        poolValue: u128,
+        supply: u128,
+    ) -> u128 {
+        // If the supply and poolValue is zero, use 1 USD as the token price.
+        if (supply == 0u128 && poolValue == 0u128) {
+            return usdValue / (PRECISION_U / MARKET_TOKEN_PRECISION_U);
+        }
+
+        // If the supply is zero and the poolValue is more than zero,
+        // then include the poolValue for the amount of tokens minted so that
+        // the market token price after mint would be 1 USD.
+        if (supply == 0u128 && poolValue > 0u128) {
+            return (usdValue + poolValue) / (PRECISION_U / MARKET_TOKEN_PRECISION_U);
+        }
+
+        // Use the `USD_DIVISOR_U` divisor to avoid overflow when calculating `supply * usdValue`.
+        // So that the usd value below 1e-6 will be rounded to 0.
+        // Revert if poolValue is zero.
+        return supply * (usdValue / USD_DIVISOR_U) / (poolValue / USD_DIVISOR_U);
     }
 }
