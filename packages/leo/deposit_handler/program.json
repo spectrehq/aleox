@@ -1,13 +1,13 @@
 {
-  "program": "aleox_deposit_v1.aleo",
+  "program": "aleox_deposit_handler_v1.aleo",
   "version": "0.0.0",
   "description": "",
   "license": "MIT",
   "dependencies": [
     {
-      "name": "aleox_deposit_inner_v1.aleo",
+      "name": "aleox_deposit_v1.aleo",
       "location": "local",
-      "path": "../deposit_inner"
+      "path": "../deposit"
     }
   ]
 }

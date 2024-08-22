@@ -9,6 +9,7 @@ program aleox_fee_v1.aleo {
         return MarketData {
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
+            swapImpactPoolAmount: marketData.swapImpactPoolAmount,
             savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
             fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
             openInterest: marketData.openInterest,
@@ -24,6 +25,8 @@ program aleox_fee_v1.aleo {
                 long: isLong ? marketData.claimableFeeAmount.long + delta : marketData.claimableFeeAmount.long,
                 short: isLong ? marketData.claimableFeeAmount.short : marketData.claimableFeeAmount.short + delta,
             },
+            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
+            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
     }
 }

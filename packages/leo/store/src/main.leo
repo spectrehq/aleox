@@ -47,6 +47,12 @@ program aleox_store_v1.aleo {
         maxPnlFactorForWithdrawals: PositionData,
 
         swapFeeFactor: PositionData,
+
+        virtualMarketId: field, // 0field means empty
+        virtualTokenIdForIndexToken: field, // 0field means empty
+
+        maxPoolAmount: CollateralData,
+        maxPoolUsdForDeposit: CollateralData,
     }
 
     // market => MarketConfig
@@ -186,6 +192,8 @@ program aleox_store_v1.aleo {
         totalBorrowing: PositionData,
         poolAmount: CollateralData,
         claimableFeeAmount: CollateralData,
+        virtualInventoryForSwaps: CollateralData,
+        virtualInventoryForPositions: i128,
     }
 
     struct CollateralPositionData {

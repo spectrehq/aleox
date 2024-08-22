@@ -1,9 +1,14 @@
 {
-  "program": "aleox_pricing_v1.aleo",
+  "program": "aleox_deposit_inner_v1.aleo",
   "version": "0.0.0",
   "description": "",
   "license": "MIT",
   "dependencies": [
+    {
+      "name": "multi_token_support_program.aleo",
+      "location": "network",
+      "network": "testnet"
+    },
     {
       "name": "aleox_store_v1.aleo",
       "location": "local",
@@ -18,6 +23,16 @@
       "name": "aleox_oracle_v1.aleo",
       "location": "local",
       "path": "../oracle"
+    },
+    {
+      "name": "aleox_pricing_v1.aleo",
+      "location": "local",
+      "path": "../pricing"
+    },
+    {
+      "name": "aleox_fee_v1.aleo",
+      "location": "local",
+      "path": "../fee"
     }
   ]
 }

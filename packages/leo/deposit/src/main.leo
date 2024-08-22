@@ -1,12 +1,11 @@
-import multi_token_support_program.aleo;
-import aleox_store_v1.aleo;
-import aleox_market_v1.aleo;
-import aleox_oracle_v1.aleo;
+import aleox_deposit_inner_v1.aleo;
 
 program aleox_deposit_v1.aleo {
     const CREDITS_RESERVED_TOKEN_ID: field = 3443843282313283355522573239085696902919850365217539366784739393210722344986field;
 
     const RECEIVER_FOR_FIRST_DEPOSIT: address = aleo1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3ljyzc; // 1field as address
+
+    const USD_DIVISOR_U: u128 = 10_000_000_000_000_000u128; // 10^16; 16 = 22 - 6
 
     struct Deposit {
         account: address,
@@ -185,30 +184,22 @@ program aleox_deposit_v1.aleo {
         f3.await();
     }
 
-    struct ExecuteDepositParams {
-        key_: u32, // 'key' is a reserved keyword
-        market: Market,
-        prices: Prices,
-        keeper: address,
-        includeVirtualInventoryImpact: bool,
-        isFirstDeposit: bool,
-        atBlock: u32,
-    }
+    const PnlFactorForDeposits: u8 = 3u8;
 
     async transition executeDeposit(
         public params: ExecuteDepositParams,
         public deposit: Deposit,
+        public market: Market,
         public generalConfig: GeneralConfig,
         public marketConfig: MarketConfig,
         public marketData: MarketData,
-    ) -> Future {
+        public prices: Prices,
+    ) -> (u128, MarketData, Future) {
         assert(!marketConfig.isMarketDisabled);
 
-        assert(params.prices.minBlock >= deposit.updatedAtBlock &&
-            params.prices.maxBlock <= deposit.updatedAtBlock + generalConfig.requestExpirationBlocks
+        assert(prices.minBlock >= deposit.updatedAtBlock &&
+            prices.maxBlock <= deposit.updatedAtBlock + generalConfig.requestExpirationBlocks
         );
-
-        validateFirstDeposit(marketConfig, deposit, params.isFirstDeposit);
 
         let (marketData1, f1): (MarketData, Future) = aleox_market_v1.aleo/distributePositionImpactPool(
             marketConfig,
@@ -218,11 +209,11 @@ program aleox_deposit_v1.aleo {
         marketData = marketData1;
 
         let (marketData2, f2): (MarketData, Future) = aleox_market_v1.aleo/updateFundingAndBorrowingState(
-            params.market,
+            market,
             generalConfig,
             marketConfig,
             marketData,
-            params.prices,
+            prices,
             params.atBlock,
         );
         marketData = marketData2;
@@ -230,27 +221,101 @@ program aleox_deposit_v1.aleo {
         aleox_market_v1.aleo/validateMaxPnl(
             marketConfig,
             marketData,
-            params.prices,
-            3u8, // PnlFactorForDeposits
-            3u8, // PnlFactorForDeposits
+            prices,
+            PnlFactorForDeposits,
+            PnlFactorForDeposits,
         );
 
-        return finalizeExecuteDeposit(
+        let longTokenAmount: u128 = 0u128;
+        let shortTokenAmount: u128 = 0u128;
+
+        // TODO: swap
+
+        assert(longTokenAmount > 0u128 || shortTokenAmount > 0u128);
+
+        let longTokenUsd: u128 = longTokenAmount * aleox_oracle_v1.aleo/midPrice(prices.longToken);
+        let shortTokenUsd: u128 = shortTokenAmount * aleox_oracle_v1.aleo/midPrice(prices.shortToken);
+        let tokenUsdDivided: u128 = (longTokenUsd + shortTokenUsd) / USD_DIVISOR_U;
+
+        let priceImpactUsd: i128 = aleox_pricing_v1.aleo/getPriceImpactUsd(
+            market,
+            prices,
+            longTokenUsd as i128,
+            shortTokenUsd as i128,
+            params.includeVirtualInventoryImpact,
+        );
+        let priceImpactUsdAbs: u128 = priceImpactUsd.abs() as u128;
+        let priceImpactUsdSign: i128 = priceImpactUsd >= 0i128 ? 1i128 : -1i128;
+
+        let (mintAmount1, marketData3, f3): (u128, MarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+            params,
+            ExecuteDepositParams_ {
+                account: deposit.account,
+                receiver: deposit.receiver,
+                isLong: true,
+                amount: longTokenAmount,
+                priceImpactUsd: (priceImpactUsdAbs * (longTokenUsd / USD_DIVISOR_U) / tokenUsdDivided) as i128 * priceImpactUsdSign,
+            },
+            market,
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+        );
+        marketData = marketData3;
+
+        let (mintAmount2, marketData4, f4): (u128, MarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+            params,
+            ExecuteDepositParams_ {
+                account: deposit.account,
+                receiver: deposit.receiver,
+                isLong: false,
+                amount: shortTokenAmount,
+                priceImpactUsd: (priceImpactUsdAbs * (shortTokenUsd / USD_DIVISOR_U) / tokenUsdDivided) as i128 * priceImpactUsdSign,
+            },
+            market,
+            generalConfig,
+            marketConfig,
+            marketData,
+            prices,
+        );
+        marketData = marketData4;
+
+        let receivedMarketTokens: u128 = mintAmount1 + mintAmount2;
+        assert(receivedMarketTokens >= deposit.minMarketTokens);
+
+        // TODO: validateMarketTokenBalance
+
+        // TODO: payExecutionFee
+
+        return (receivedMarketTokens, marketData, finalizeExecuteDeposit(
             f1,
             f2,
+            f3,
+            f4,
             params,
             deposit,
-        );
+            marketConfig,
+        ));
     }
 
     async function finalizeExecuteDeposit(
         f1: Future,
         f2: Future,
+        f3: Future,
+        f4: Future,
         params: ExecuteDepositParams,
         deposit: Deposit,
+        marketConfig: MarketConfig,
     ) {
+        // Validate whether this is the first deposit.
+        let metadata: TokenMetadata = multi_token_support_program.aleo/registered_tokens.get(deposit.market);
+        validateFirstDeposit(marketConfig, deposit, metadata.supply);
+
         f1.await();
         f2.await();
+        f3.await();
+        f4.await();
 
         let key: u32 = params.key_;
 
@@ -274,10 +339,6 @@ program aleox_deposit_v1.aleo {
             depositList.remove(lastIndex);
             depositByKey.remove(key);
         }
-
-        // Validate whether this is the first deposit.
-        let metadata: TokenMetadata = multi_token_support_program.aleo/registered_tokens.get(deposit.market);
-        assert(params.isFirstDeposit == (metadata.supply == 0u128));
     }
 
     // This method validates that a specified minimum number of market tokens are locked.
@@ -288,9 +349,10 @@ program aleox_deposit_v1.aleo {
     inline validateFirstDeposit(
         marketConfig: MarketConfig,
         deposit: Deposit,
-        isFirstDeposit: bool,
+        marketTokenSupply: u128,
     ) {
-        if (!isFirstDeposit) {
+        // Return if this is not the first deposit.
+        if (marketTokenSupply > 0u128) {
             return;
         }
 
@@ -301,26 +363,5 @@ program aleox_deposit_v1.aleo {
 
         assert(deposit.receiver == RECEIVER_FOR_FIRST_DEPOSIT);
         assert(deposit.minMarketTokens >= marketConfig.minMarketTokensForFirstDeposit);
-    }
-
-    struct ExecuteDepositParams_ {
-        account: address,
-        receiver: address,
-        tokenIn: field, // the token to deposit, either the market.longToken or market.shortToken
-        tokenOut: field, // the other token, if tokenIn is market.longToken then tokenOut is market.shortToken and vice versa
-        tokenInPrice: Price,
-        tokenOutPrice: Price,
-        amount: u128,
-        priceImpactUsd: i128,
-
-        generalConfig: GeneralConfig,
-        marketConfig: MarketConfig,
-        marketData: MarketData,
-    }
-
-    inline executeDeposit_(
-        params: ExecuteDepositParams,
-        params_: ExecuteDepositParams_,
-    ) {
     }
 }

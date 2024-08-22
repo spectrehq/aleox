@@ -45,4 +45,8 @@ program aleox_oracle_v1.aleo {
 
         return Prices { indexToken, longToken, shortToken, swapTokens, minBlock, maxBlock };
     }
+
+    transition midPrice(price: Price) -> u128 {
+        return (price.max + price.min) / 2u128;
+    }
 }
