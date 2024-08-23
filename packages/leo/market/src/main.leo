@@ -133,7 +133,9 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
@@ -284,7 +286,9 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
@@ -593,7 +597,9 @@ program aleox_market_v1.aleo {
             },
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
@@ -1035,7 +1041,9 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
@@ -1158,7 +1166,9 @@ program aleox_market_v1.aleo {
                 long: isLong ? poolAmount : marketData.poolAmount.long,
                 short: isLong ? marketData.poolAmount.short : poolAmount,
             },
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
@@ -1204,7 +1214,9 @@ program aleox_market_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: CollateralData {
                 long: isLong ? virtualInventoryForSwaps : marketData.virtualInventoryForSwaps.long,
                 short: isLong ? marketData.virtualInventoryForSwaps.short : virtualInventoryForSwaps,
@@ -1223,5 +1235,97 @@ program aleox_market_v1.aleo {
         let poolAmount: u128 = isLong ? marketData.poolAmount.long : marketData.poolAmount.short;
         let maxPoolAmount: u128 = isLong ? marketConfig.maxPoolAmount.long : marketConfig.maxPoolAmount.short;
         assert(poolAmount <= maxPoolAmount);
+    }
+
+    async transition validateMarketTokenBalance(
+        public market: Market,
+        public marketData: MarketData,
+    ) -> Future {
+        let (expectedMinBalanceForLongToken, expectedMinBalanceForShortToken): (u128, u128) = getExpectedMinTokenBalance(marketData);
+
+        let collateralAmountForLongToken: u128 = marketData.collateralSum.longTokenIsLong + marketData.collateralSum.longTokenIsShort;
+        let collateralAmountForShortToken: u128 = marketData.collateralSum.shortTokenIsLong + marketData.collateralSum.shortTokenIsShort;
+
+        let claimableFundingFeeAmountForLongToken: u128 = marketData.claimableFeeAmount.long;
+        let claimableFundingFeeAmountForShortToken: u128 = marketData.claimableFeeAmount.short;
+
+        let balanceKeyForLongToken: field = BHP256::hash_to_field(TokenOwner {
+            account: self.address,
+            token_id: market.longToken,
+        });
+        let balanceKeyForShortToken: field = BHP256::hash_to_field(TokenOwner {
+            account: self.address,
+            token_id: market.shortToken,
+        });
+
+        return finalizeValidateMarketTokenBalance(
+            market,
+            expectedMinBalanceForLongToken,
+            expectedMinBalanceForShortToken,
+            collateralAmountForLongToken,
+            collateralAmountForShortToken,
+            claimableFundingFeeAmountForLongToken,
+            claimableFundingFeeAmountForShortToken,
+            balanceKeyForLongToken,
+            balanceKeyForShortToken,
+        );
+    }
+
+    async function finalizeValidateMarketTokenBalance(
+        market: Market,
+        expectedMinBalanceForLongToken: u128,
+        expectedMinBalanceForShortToken: u128,
+        collateralAmountForLongToken: u128,
+        collateralAmountForShortToken: u128,
+        claimableFundingFeeAmountForLongToken: u128,
+        claimableFundingFeeAmountForShortToken: u128,
+        balanceKeyForLongToken: field,
+        balanceKeyForShortToken: field,
+    ) {
+        let balanceForLongToken: u128 = multi_token_support_program.aleo/authorized_balances.get(balanceKeyForLongToken).balance;
+
+        if (balanceKeyForLongToken == balanceKeyForShortToken) {
+            assert(balanceForLongToken >= expectedMinBalanceForLongToken + expectedMinBalanceForShortToken);
+            // Funding fees can be claimed even if the collateral for positions that should pay funding fees
+            // hasn't been reduced yet.
+            // Due to that, funding fees and collateral is excluded from the expectedMinBalance calculation
+            // and validated separately.
+            assert(balanceForLongToken >= collateralAmountForLongToken + collateralAmountForShortToken);
+            // In case of late liquidations, it may be possible for the claimableFundingFeeAmount to exceed the market token balance.
+            // But this should be very rare.
+            assert(balanceForLongToken >= claimableFundingFeeAmountForLongToken + claimableFundingFeeAmountForShortToken);
+        } else {
+            let balanceForShortToken: u128 = multi_token_support_program.aleo/authorized_balances.get(balanceKeyForShortToken).balance;
+
+            assert(balanceForLongToken >= expectedMinBalanceForLongToken);
+            assert(balanceForLongToken >= collateralAmountForLongToken);
+            assert(balanceForLongToken >= claimableFundingFeeAmountForLongToken);
+
+            assert(balanceForShortToken >= expectedMinBalanceForShortToken);
+            assert(balanceForShortToken >= collateralAmountForShortToken);
+            assert(balanceForShortToken >= claimableFundingFeeAmountForShortToken);
+        }
+    }
+
+    inline getExpectedMinTokenBalance(
+        marketData: MarketData,
+    ) -> (u128, u128) {
+        // Funding fees are excluded from this summation as claimable funding fees
+        // are incremented without a corresponding decrease of the collateral of
+        // other positions, the collateral of other positions is decreased when
+        // those positions are updated.
+        return (
+            marketData.poolAmount.long +
+            marketData.swapImpactPoolAmount.long +
+            marketData.claimableCollateralAmount.long +
+            marketData.claimableFeeAmount.long +
+            marketData.affiliateRewardAmount.long,
+
+            marketData.poolAmount.short +
+            marketData.swapImpactPoolAmount.short +
+            marketData.claimableCollateralAmount.short +
+            marketData.claimableFeeAmount.short +
+            marketData.affiliateRewardAmount.short,
+        );
     }
 }

@@ -284,7 +284,10 @@ program aleox_deposit_v1.aleo {
         let receivedMarketTokens: u128 = mintAmount1 + mintAmount2;
         assert(receivedMarketTokens >= deposit.minMarketTokens);
 
-        // TODO: validateMarketTokenBalance
+        let f5: Future = aleox_market_v1.aleo/validateMarketTokenBalance(
+            market,
+            marketData,
+        );
 
         // TODO: payExecutionFee
 
@@ -293,6 +296,7 @@ program aleox_deposit_v1.aleo {
             f2,
             f3,
             f4,
+            f5,
             params,
             deposit,
             marketConfig,
@@ -304,6 +308,7 @@ program aleox_deposit_v1.aleo {
         f2: Future,
         f3: Future,
         f4: Future,
+        f5: Future,
         params: ExecuteDepositParams,
         deposit: Deposit,
         marketConfig: MarketConfig,
@@ -316,6 +321,7 @@ program aleox_deposit_v1.aleo {
         f2.await();
         f3.await();
         f4.await();
+        f5.await();
 
         let key: u32 = params.key_;
 

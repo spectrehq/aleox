@@ -191,7 +191,9 @@ program aleox_store_v1.aleo {
         cumulativeBFUpdatedAtBlock: PositionAtBlock, // cumulativeBorrowingFactorUpdatedAtBlock
         totalBorrowing: PositionData,
         poolAmount: CollateralData,
+        claimableCollateralAmount: CollateralData,
         claimableFeeAmount: CollateralData,
+        affiliateRewardAmount: CollateralData,
         virtualInventoryForSwaps: CollateralData,
         virtualInventoryForPositions: i128,
     }

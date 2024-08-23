@@ -21,10 +21,12 @@ program aleox_fee_v1.aleo {
             cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
             totalBorrowing: marketData.totalBorrowing,
             poolAmount: marketData.poolAmount,
+            claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: CollateralData {
                 long: isLong ? marketData.claimableFeeAmount.long + delta : marketData.claimableFeeAmount.long,
                 short: isLong ? marketData.claimableFeeAmount.short : marketData.claimableFeeAmount.short + delta,
             },
+            affiliateRewardAmount: marketData.affiliateRewardAmount,
             virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
             virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
