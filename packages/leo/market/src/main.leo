@@ -95,10 +95,10 @@ program aleox_market_v1.aleo {
 
     async transition burnMarketTokens(
         public marketToken: field,
-        public receiver: address,
+        public owner: address,
         public amount: u128,
     ) -> Future {
-        let f: Future = multi_token_support_program.aleo/burn_public(marketToken, receiver, amount);
+        let f: Future = multi_token_support_program.aleo/burn_public(marketToken, owner, amount);
 
         return finalizeBurnMarketTokens(f);
     }
@@ -1327,5 +1327,40 @@ program aleox_market_v1.aleo {
             marketData.claimableFeeAmount.short +
             marketData.affiliateRewardAmount.short,
         );
+    }
+
+    async transition validateSwapPath(
+        public swapPath: [field; 2],
+    ) -> Future {
+        return finalizeValidateSwapPath(swapPath);
+    }
+
+    async function finalizeValidateSwapPath(
+        swapPath: [field; 2],
+    ) {
+        for i: u8 in 0u8..2u8 {
+            let marketId: field = swapPath[i];
+            let cfg: MarketConfig = aleox_store_v1.aleo/marketConfig.get(marketId);
+            assert(!cfg.isMarketDisabled);
+            let market: Market = markets.get(marketId);
+            assert(market.longToken != market.shortToken);
+        }
+    }
+
+    transition validateReserve(
+        public marketConfig: MarketConfig,
+        public marketData: MarketData,
+        public prices: Prices,
+        public isLong: bool,
+    ) {
+        // `poolUsd` is used instead of pool amount as the `indexToken` may not match the `longToken`.
+        // Additionally, the `shortToken` may not be a stablecoin.
+        let poolUsd: u128 = getPoolUsdWithoutPnl(marketData, prices, isLong, false);
+        let reserveFactor: u128 = isLong ? marketConfig.reserveFactor.long : marketConfig.reserveFactor.short;
+        let maxReservedUsd: u128 = poolUsd * reserveFactor / FACTOR_PRECISION_U;
+
+        let reservedUsd: u128 = getReservedUsd(marketData, prices, isLong);
+
+        assert(reservedUsd <= maxReservedUsd);
     }
 }

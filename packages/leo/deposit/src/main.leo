@@ -69,53 +69,63 @@ program aleox_deposit_v1.aleo {
             params.executionFee, // amount
         );
 
-        return finalizeCreateDeposit(f1, f2, f3, self.signer, params);
+        let f4: Future = aleox_market_v1.aleo/validateSwapPath(params.longTokenSwapPath);
+        let f5: Future = aleox_market_v1.aleo/validateSwapPath(params.shortTokenSwapPath);
+
+        return finalizeCreateDeposit(
+            f1,
+            f2,
+            f3,
+            f4,
+            f5,
+            self.signer,
+            params,
+        );
     }
 
-    async function finalizeCreateDeposit(f1: Future, f2: Future, f3: Future, account: address, params: CreateDepositParams) {
+    async function finalizeCreateDeposit(
+        f1: Future,
+        f2: Future,
+        f3: Future,
+        f4: Future,
+        f5: Future,
+        account: address,
+        params: CreateDepositParams,
+    ) {
         let marketConfig: MarketConfig = aleox_store_v1.aleo/marketConfig.get(params.market);
-        assert(marketConfig.isMarketDisabled);
+        assert(!marketConfig.isMarketDisabled);
 
-        // Validate swap path.
-        for i: u8 in 0u8..2u8 {
-            let m: field = params.longTokenSwapPath[i];
-            let cfg: MarketConfig = aleox_store_v1.aleo/marketConfig.get(m);
-            assert(cfg.isMarketDisabled);
-            let mkt: Market = aleox_market_v1.aleo/markets.get(m);
-            assert(mkt.longToken != mkt.shortToken);
+        f4.await();
+        f5.await();
 
-            m = params.shortTokenSwapPath[i];
-            cfg = aleox_store_v1.aleo/marketConfig.get(m);
-            assert(cfg.isMarketDisabled);
-            mkt = aleox_market_v1.aleo/markets.get(m);
-            assert(mkt.longToken != mkt.shortToken);
+        // Add deposit.
+        {
+            let deposit: Deposit = Deposit {
+                account,
+                receiver: params.receiver,
+                market: params.market,
+                initialLongToken: params.initialLongToken,
+                initialShortToken: params.initialShortToken,
+                initialLongTokenAmount: params.initialLongTokenAmount,
+                initialShortTokenAmount: params.initialShortTokenAmount,
+                longTokenSwapPath: params.longTokenSwapPath,
+                shortTokenSwapPath: params.shortTokenSwapPath,
+                minMarketTokens: params.minMarketTokens,
+                executionFee: params.executionFee,
+                shouldUnwrapNativeToken: params.shouldUnwrapNativeToken,
+                updatedAtBlock: block.height,
+            };
+
+            let key: u32 = depositNonce.get_or_use(0u8, 0u32);
+            depositNonce.set(0u8, key + 1u32);
+
+            deposits.set(key, deposit);
+
+            let index: u32 = depositCount.get_or_use(0u8, 0u32);
+            depositCount.set(0u8, index + 1u32);
+            depositList.set(index, key);
+            depositByKey.set(key, index);
         }
-
-        let deposit: Deposit = Deposit {
-            account,
-            receiver: params.receiver,
-            market: params.market,
-            initialLongToken: params.initialLongToken,
-            initialShortToken: params.initialShortToken,
-            initialLongTokenAmount: params.initialLongTokenAmount,
-            initialShortTokenAmount: params.initialShortTokenAmount,
-            longTokenSwapPath: params.longTokenSwapPath,
-            shortTokenSwapPath: params.shortTokenSwapPath,
-            minMarketTokens: params.minMarketTokens,
-            executionFee: params.executionFee,
-            shouldUnwrapNativeToken: params.shouldUnwrapNativeToken,
-            updatedAtBlock: block.height,
-        };
-
-        let key: u32 = depositNonce.get_or_use(0u8, 0u32);
-        depositNonce.set(0u8, key + 1u32);
-
-        deposits.set(key, deposit);
-
-        let index: u32 = depositCount.get_or_use(0u8, 0u32);
-        depositCount.set(0u8, index + 1u32);
-        depositList.set(index, key);
-        depositByKey.set(key, index);
 
         f1.await();
         f2.await();
@@ -127,20 +137,20 @@ program aleox_deposit_v1.aleo {
         public deposit: Deposit,
         public cancelExecutionFee: u128,
     ) -> Future {
-        let f1: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f1: Future = multi_token_support_program.aleo/transfer_public(
             deposit.initialLongToken, // token_id
             deposit.account, // recipient
             deposit.initialLongTokenAmount, // amount
         );
-        let f2: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f2: Future = multi_token_support_program.aleo/transfer_public(
             deposit.initialShortToken, // token_id
             deposit.account, // recipient
             deposit.initialShortTokenAmount, // amount
         );
-        let f3: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f3: Future = multi_token_support_program.aleo/transfer_public(
             CREDITS_RESERVED_TOKEN_ID, // token_id
             deposit.account, // recipient
-            deposit.executionFee > cancelExecutionFee ? deposit.executionFee.sub_wrapped(cancelExecutionFee) : 0u128, // amount
+            deposit.executionFee - cancelExecutionFee, // amount
         );
 
         return finalizeCancelDeposit(f1, f2, f3, key, deposit, cancelExecutionFee);

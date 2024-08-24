@@ -53,6 +53,8 @@ program aleox_store_v1.aleo {
 
         maxPoolAmount: CollateralData,
         maxPoolUsdForDeposit: CollateralData,
+
+        reserveFactor: PositionData,
     }
 
     // market => MarketConfig
