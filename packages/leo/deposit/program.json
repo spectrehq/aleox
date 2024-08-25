@@ -8,6 +8,11 @@
       "name": "aleox_deposit_inner_v1.aleo",
       "location": "local",
       "path": "../deposit_inner"
+    },
+    {
+      "name": "aleox_swap_v1.aleo",
+      "location": "local",
+      "path": "../swap"
     }
   ]
 }

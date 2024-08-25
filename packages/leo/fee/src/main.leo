@@ -7,6 +7,7 @@ program aleox_fee_v1.aleo {
         public delta: u128,
     ) -> MarketData {
         return MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
             swapImpactPoolAmount: marketData.swapImpactPoolAmount,

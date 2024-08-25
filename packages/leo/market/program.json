@@ -5,12 +5,7 @@
   "license": "MIT",
   "dependencies": [
     {
-      "name": "credits.aleo",
-      "location": "network",
-      "network": "testnet"
-    },
-    {
-      "name": "multi_token_support_program.aleo",
+      "name": "mtsp_creditsv1.aleo",
       "location": "network",
       "network": "testnet"
     },

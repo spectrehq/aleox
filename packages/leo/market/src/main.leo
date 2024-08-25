@@ -1,8 +1,10 @@
-import multi_token_support_program.aleo;
+import mtsp_creditsv1.aleo;
 import aleox_store_v1.aleo;
 import aleox_oracle_v1.aleo;
 
 program aleox_market_v1.aleo {
+    const CREDITS_RESERVED_TOKEN_ID: field = 3443843282313283355522573239085696902919850365217539366784739393210722344986field;
+
     const PRECISION_U: u128 = 10_000_000_000_000_000_000_000u128; // 10^22
     const PRECISION_I: i128 = 10_000_000_000_000_000_000_000i128; // 10^22
     const MARKET_TOKEN_PRECISION_U: u128 = 1_000_000u128; // 10^6
@@ -50,7 +52,7 @@ program aleox_market_v1.aleo {
 
         // Register market token in mtsp program.
         // Admin is this program.
-        let f: Future = multi_token_support_program.aleo/register_token(
+        let f: Future = multi_token_support_programv1.aleo/register_token(
             marketToken, // token_id
             0u128, // name, TODO
             0u128, // symbol, TODO
@@ -66,9 +68,9 @@ program aleox_market_v1.aleo {
     async function finalizeCreateMarket(f: Future, market: Market) {
         f.await();
 
-        assert(multi_token_support_program.aleo/registered_tokens.contains(market.indexToken));
-        assert(multi_token_support_program.aleo/registered_tokens.contains(market.longToken));
-        assert(multi_token_support_program.aleo/registered_tokens.contains(market.shortToken));
+        assert(multi_token_support_programv1.aleo/registered_tokens.contains(market.indexToken));
+        assert(multi_token_support_programv1.aleo/registered_tokens.contains(market.longToken));
+        assert(multi_token_support_programv1.aleo/registered_tokens.contains(market.shortToken));
 
         assert(!markets.contains(market.marketToken));
 
@@ -84,7 +86,7 @@ program aleox_market_v1.aleo {
         public receiver: address,
         public amount: u128,
     ) -> Future {
-        let f: Future = multi_token_support_program.aleo/mint_public(marketToken, receiver, amount, 4294967295u32);
+        let f: Future = multi_token_support_programv1.aleo/mint_public(marketToken, receiver, amount, 4294967295u32);
 
         return finalizeMintMarketTokens(f);
     }
@@ -98,13 +100,49 @@ program aleox_market_v1.aleo {
         public owner: address,
         public amount: u128,
     ) -> Future {
-        let f: Future = multi_token_support_program.aleo/burn_public(marketToken, owner, amount);
+        let f: Future = multi_token_support_programv1.aleo/burn_public(marketToken, owner, amount);
 
         return finalizeBurnMarketTokens(f);
     }
 
     async function finalizeBurnMarketTokens(f: Future) {
         f.await();
+    }
+
+    async transition transferOut(
+        public token: field,
+        public receiver: address,
+        public amount: u128,
+        public shouldUnwrapNativeToken: bool,
+    ) -> Future {
+        let unt: bool = token == CREDITS_RESERVED_TOKEN_ID && shouldUnwrapNativeToken;
+
+        let f1: Future = multi_token_support_programv1.aleo/transfer_public(
+            token,
+            receiver,
+            unt ? 0u128 : amount,
+        );
+
+        let f2: Future = mtsp_creditsv1.aleo/withdraw_credits_public(
+            unt ? amount as u64 : 0u64,
+        );
+
+        let f3: Future = credits.aleo/transfer_public(
+            receiver,
+            unt ? amount as u64 : 0u64,
+        );
+
+        return finalizeTransferOut(f1, f2, f3);
+    }
+
+    async function finalizeTransferOut(
+        f1: Future,
+        f2: Future,
+        f3: Future,
+    ) {
+        f1.await();
+        f2.await();
+        f3.await();
     }
 
     async transition distributePositionImpactPool(
@@ -119,6 +157,7 @@ program aleox_market_v1.aleo {
         );
 
         marketData = MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount - distributionAmount,
             positionImpactPoolDistAtBlock: atBlock,
             swapImpactPoolAmount: marketData.swapImpactPoolAmount,
@@ -270,6 +309,7 @@ program aleox_market_v1.aleo {
         };
 
         return MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
             swapImpactPoolAmount: marketData.swapImpactPoolAmount,
@@ -571,6 +611,7 @@ program aleox_market_v1.aleo {
         ).1;
 
         return MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
             swapImpactPoolAmount: marketData.swapImpactPoolAmount,
@@ -1016,6 +1057,7 @@ program aleox_market_v1.aleo {
         swapImpactPoolAmount = applyBoundedDeltaToUint(swapImpactPoolAmount, -impactAmount);
 
         marketData = MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
             swapImpactPoolAmount: CollateralData {
@@ -1140,6 +1182,7 @@ program aleox_market_v1.aleo {
         poolAmount = applyDeltaToUint(poolAmount, delta);
 
         marketData = MarketData {
+            balance: marketData.balance,
             positionImpactPoolAmount: marketData.positionImpactPoolAmount,
             positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
             swapImpactPoolAmount: marketData.swapImpactPoolAmount,
@@ -1210,10 +1253,13 @@ program aleox_market_v1.aleo {
         assert(poolAmount <= maxPoolAmount);
     }
 
-    async transition validateMarketTokenBalance(
+    transition validateMarketTokenBalance(
         public market: Market,
         public marketData: MarketData,
-    ) -> Future {
+    ) {
+        let balanceForLongToken: u128 = marketData.balance.long;
+        let balanceForShortToken: u128 = marketData.balance.short;
+
         let (expectedMinBalanceForLongToken, expectedMinBalanceForShortToken): (u128, u128) = getExpectedMinTokenBalance(marketData);
 
         let collateralAmountForLongToken: u128 = marketData.collateralSum.longTokenIsLong + marketData.collateralSum.longTokenIsShort;
@@ -1222,42 +1268,7 @@ program aleox_market_v1.aleo {
         let claimableFundingFeeAmountForLongToken: u128 = marketData.claimableFeeAmount.long;
         let claimableFundingFeeAmountForShortToken: u128 = marketData.claimableFeeAmount.short;
 
-        let balanceKeyForLongToken: field = BHP256::hash_to_field(TokenOwner {
-            account: self.address,
-            token_id: market.longToken,
-        });
-        let balanceKeyForShortToken: field = BHP256::hash_to_field(TokenOwner {
-            account: self.address,
-            token_id: market.shortToken,
-        });
-
-        return finalizeValidateMarketTokenBalance(
-            market,
-            expectedMinBalanceForLongToken,
-            expectedMinBalanceForShortToken,
-            collateralAmountForLongToken,
-            collateralAmountForShortToken,
-            claimableFundingFeeAmountForLongToken,
-            claimableFundingFeeAmountForShortToken,
-            balanceKeyForLongToken,
-            balanceKeyForShortToken,
-        );
-    }
-
-    async function finalizeValidateMarketTokenBalance(
-        market: Market,
-        expectedMinBalanceForLongToken: u128,
-        expectedMinBalanceForShortToken: u128,
-        collateralAmountForLongToken: u128,
-        collateralAmountForShortToken: u128,
-        claimableFundingFeeAmountForLongToken: u128,
-        claimableFundingFeeAmountForShortToken: u128,
-        balanceKeyForLongToken: field,
-        balanceKeyForShortToken: field,
-    ) {
-        let balanceForLongToken: u128 = multi_token_support_program.aleo/authorized_balances.get(balanceKeyForLongToken).balance;
-
-        if (balanceKeyForLongToken == balanceKeyForShortToken) {
+        if (market.longToken == market.shortToken) {
             assert(balanceForLongToken >= expectedMinBalanceForLongToken + expectedMinBalanceForShortToken);
             // Funding fees can be claimed even if the collateral for positions that should pay funding fees
             // hasn't been reduced yet.
@@ -1268,8 +1279,6 @@ program aleox_market_v1.aleo {
             // But this should be very rare.
             assert(balanceForLongToken >= claimableFundingFeeAmountForLongToken + claimableFundingFeeAmountForShortToken);
         } else {
-            let balanceForShortToken: u128 = multi_token_support_program.aleo/authorized_balances.get(balanceKeyForShortToken).balance;
-
             assert(balanceForLongToken >= expectedMinBalanceForLongToken);
             assert(balanceForLongToken >= collateralAmountForLongToken);
             assert(balanceForLongToken >= claimableFundingFeeAmountForLongToken);

@@ -182,6 +182,7 @@ program aleox_store_v1.aleo {
     mapping moduleConfig: address => ModuleConfig;
 
     struct MarketData {
+        balance: CollateralData,
         positionImpactPoolAmount: u128,
         positionImpactPoolDistAtBlock: u32, // positionImpactPoolDistributedAtBlock
         swapImpactPoolAmount: CollateralData,

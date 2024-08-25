@@ -1,4 +1,4 @@
-import multi_token_support_program.aleo;
+import multi_token_support_programv1.aleo;
 import aleox_store_v1.aleo;
 import aleox_market_v1.aleo;
 import aleox_pricing_v1.aleo;
@@ -28,7 +28,7 @@ program aleox_swap_inner_v1.aleo {
         public marketData: MarketData,
         public virtualMarketData: VirtualMarketData,
         public prices: Prices,
-    ) -> (field, u128, Future) {
+    ) -> (field, u128, MarketData, VirtualMarketData, Future) {
         assert(!marketConfig.isMarketDisabled);
         assert(market.longToken != market.shortToken);
 
@@ -113,10 +113,11 @@ program aleox_swap_inner_v1.aleo {
             poolAmountOut = amountOut;
         }
 
-        let f: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f: Future = aleox_market_v1.aleo/transferOut(
             params_.isLongTokenIn ? market.shortToken : market.longToken, // token_id
             params_.receiver, // recipient
             params_.receiver != ZERO_ADDRESS ? amountOut : 0u128, // amount
+            params_.shouldUnwrapNativeToken,
         );
 
         let (marketData4, virtualMarketData1): (MarketData, VirtualMarketData) = aleox_market_v1.aleo/applyDeltaToPoolAmount(
@@ -160,7 +161,7 @@ program aleox_swap_inner_v1.aleo {
             params_.isLongTokenIn ? PnlFactorForWithdrawals : PnlFactorForDeposits,
         );
 
-        return (tokenOut, amountOut, finalizeSwap(f));
+        return (tokenOut, amountOut, marketData, virtualMarketData, finalizeSwap(f));
     }
 
     async function finalizeSwap(

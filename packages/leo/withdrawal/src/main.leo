@@ -1,4 +1,4 @@
-import multi_token_support_program.aleo;
+import multi_token_support_programv1.aleo;
 import aleox_store_v1.aleo;
 import aleox_market_v1.aleo;
 import aleox_oracle_v1.aleo;
@@ -50,12 +50,12 @@ program aleox_withdrawal_v1.aleo {
         assert(params.receiver != 0field as address);
         assert(params.marketTokenAmount > 0u128);
 
-        let f1: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f1: Future = multi_token_support_programv1.aleo/transfer_public_as_signer(
             params.market, // token_id
             self.address, // recipient
             params.marketTokenAmount, // amount
         );
-        let f2: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f2: Future = multi_token_support_programv1.aleo/transfer_public_as_signer(
             CREDITS_RESERVED_TOKEN_ID, // token_id
             self.address, // recipient
             params.executionFee, // amount
@@ -123,12 +123,12 @@ program aleox_withdrawal_v1.aleo {
         public withdrawal: Withdrawal,
         public cancelExecutionFee: u128,
     ) -> Future {
-        let f1: Future = multi_token_support_program.aleo/transfer_public(
+        let f1: Future = multi_token_support_programv1.aleo/transfer_public(
             withdrawal.market, // token_id
             withdrawal.account, // recipient
             withdrawal.marketTokenAmount, // amount
         );
-        let f2: Future = multi_token_support_program.aleo/transfer_public(
+        let f2: Future = multi_token_support_programv1.aleo/transfer_public(
             CREDITS_RESERVED_TOKEN_ID, // token_id
             withdrawal.account, // recipient
             withdrawal.executionFee - cancelExecutionFee, // amount
@@ -318,7 +318,7 @@ program aleox_withdrawal_v1.aleo {
         // If the native token was transferred to the receiver in a swap,
         // it may be possible to invoke external programs before the validations
         // are called.
-        let f4: Future = aleox_market_v1.aleo/validateMarketTokenBalance(
+        aleox_market_v1.aleo/validateMarketTokenBalance(
             market,
             marketData,
         );
@@ -329,7 +329,6 @@ program aleox_withdrawal_v1.aleo {
             f1,
             f2,
             f3,
-            f4,
         ));
     }
 
@@ -337,12 +336,10 @@ program aleox_withdrawal_v1.aleo {
         f1: Future,
         f2: Future,
         f3: Future,
-        f4: Future,
     ) {
         f1.await();
         f2.await();
         f3.await();
-        f4.await();
     }
 
     const PnlFactorForWithdrawals: u8 = 4u8;

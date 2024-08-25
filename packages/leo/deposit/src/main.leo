@@ -1,4 +1,5 @@
 import aleox_deposit_inner_v1.aleo;
+import aleox_swap_v1.aleo;
 
 program aleox_deposit_v1.aleo {
     const CREDITS_RESERVED_TOKEN_ID: field = 3443843282313283355522573239085696902919850365217539366784739393210722344986field;
@@ -53,17 +54,17 @@ program aleox_deposit_v1.aleo {
 
         // If the initialLongToken and initialShortToken are the same, only the initialLongTokenAmount would
         // be non-zero, the initialShortTokenAmount would be zero.
-        let f1: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f1: Future = multi_token_support_programv1.aleo/transfer_public_as_signer(
             params.initialLongToken, // token_id
             self.address, // recipient
             params.initialLongTokenAmount, // amount
         );
-        let f2: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f2: Future = multi_token_support_programv1.aleo/transfer_public_as_signer(
             params.initialShortToken, // token_id
             self.address, // recipient
             params.initialShortTokenAmount, // amount
         );
-        let f3: Future = multi_token_support_program.aleo/transfer_public_as_signer(
+        let f3: Future = multi_token_support_programv1.aleo/transfer_public_as_signer(
             CREDITS_RESERVED_TOKEN_ID, // token_id
             self.address, // recipient
             params.executionFee, // amount
@@ -137,17 +138,17 @@ program aleox_deposit_v1.aleo {
         public deposit: Deposit,
         public cancelExecutionFee: u128,
     ) -> Future {
-        let f1: Future = multi_token_support_program.aleo/transfer_public(
+        let f1: Future = multi_token_support_programv1.aleo/transfer_public(
             deposit.initialLongToken, // token_id
             deposit.account, // recipient
             deposit.initialLongTokenAmount, // amount
         );
-        let f2: Future = multi_token_support_program.aleo/transfer_public(
+        let f2: Future = multi_token_support_programv1.aleo/transfer_public(
             deposit.initialShortToken, // token_id
             deposit.account, // recipient
             deposit.initialShortTokenAmount, // amount
         );
-        let f3: Future = multi_token_support_program.aleo/transfer_public(
+        let f3: Future = multi_token_support_programv1.aleo/transfer_public(
             CREDITS_RESERVED_TOKEN_ID, // token_id
             deposit.account, // recipient
             deposit.executionFee - cancelExecutionFee, // amount
@@ -204,6 +205,7 @@ program aleox_deposit_v1.aleo {
         public marketConfig: MarketConfig,
         public marketData: MarketData,
         public virtualMarketData: VirtualMarketData,
+        public swapMarkets: [SwapMarkets; 2],
         public oracle: Oracle,
     ) -> (u128, MarketData, VirtualMarketData, Future) {
         assert(!marketConfig.isMarketDisabled);
@@ -239,10 +241,35 @@ program aleox_deposit_v1.aleo {
             PnlFactorForDeposits,
         );
 
-        let longTokenAmount: u128 = 0u128;
-        let shortTokenAmount: u128 = 0u128;
+        let (longToken, longTokenAmount, swapMarketData1, swapVirtualMarketData1, f3):
+            (field, u128, [MarketData; 2], [VirtualMarketData; 2], Future) = aleox_swap_v1.aleo/swap2(
+            SwapParams {
+                tokenIn: deposit.initialLongToken,
+                amountIn: deposit.initialLongTokenAmount,
+                minOutputAmount: 0u128,
+                receiver: aleox_market_v1.aleo as address,
+                shouldUnwrapNativeToken: false,
+            },
+            generalConfig,
+            swapMarkets,
+        );
+        assert(longToken == market.longToken);
+        // TODO
 
-        // TODO: swap
+        let (shortToken, shortTokenAmount, swapMarketData2, swapVirtualMarketData2, f4):
+            (field, u128, [MarketData; 2], [VirtualMarketData; 2], Future) = aleox_swap_v1.aleo/swap2(
+            SwapParams {
+                tokenIn: deposit.initialShortToken,
+                amountIn: deposit.initialShortTokenAmount,
+                minOutputAmount: 0u128,
+                receiver: aleox_market_v1.aleo as address,
+                shouldUnwrapNativeToken: false,
+            },
+            generalConfig,
+            swapMarkets,
+        );
+        assert(shortToken == market.shortToken);
+        // TODO
 
         assert(longTokenAmount > 0u128 || shortTokenAmount > 0u128);
 
@@ -263,7 +290,7 @@ program aleox_deposit_v1.aleo {
         let priceImpactUsdAbs: u128 = priceImpactUsd.abs() as u128;
         let priceImpactUsdSign: i128 = priceImpactUsd >= 0i128 ? 1i128 : -1i128;
 
-        let (mintAmount1, marketData3, virtualMarketData1, f3): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+        let (mintAmount1, marketData3, virtualMarketData1, f5): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
             params,
             ExecuteDepositParams_ {
                 account: deposit.account,
@@ -282,7 +309,7 @@ program aleox_deposit_v1.aleo {
         marketData = marketData3;
         virtualMarketData = virtualMarketData1;
 
-        let (mintAmount2, marketData4, virtualMarketData2, f4): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+        let (mintAmount2, marketData4, virtualMarketData2, f6): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
             params,
             ExecuteDepositParams_ {
                 account: deposit.account,
@@ -304,7 +331,7 @@ program aleox_deposit_v1.aleo {
         let receivedMarketTokens: u128 = mintAmount1 + mintAmount2;
         assert(receivedMarketTokens >= deposit.minMarketTokens);
 
-        let f5: Future = aleox_market_v1.aleo/validateMarketTokenBalance(
+        aleox_market_v1.aleo/validateMarketTokenBalance(
             market,
             marketData,
         );
@@ -317,6 +344,7 @@ program aleox_deposit_v1.aleo {
             f3,
             f4,
             f5,
+            f6,
             params,
             deposit,
             marketConfig,
@@ -329,12 +357,13 @@ program aleox_deposit_v1.aleo {
         f3: Future,
         f4: Future,
         f5: Future,
+        f6: Future,
         params: ExecuteDepositParams,
         deposit: Deposit,
         marketConfig: MarketConfig,
     ) {
         // Validate whether this is the first deposit.
-        let metadata: TokenMetadata = multi_token_support_program.aleo/registered_tokens.get(deposit.market);
+        let metadata: TokenMetadata = multi_token_support_programv1.aleo/registered_tokens.get(deposit.market);
         validateFirstDeposit(marketConfig, deposit, metadata.supply);
 
         f1.await();
@@ -342,6 +371,7 @@ program aleox_deposit_v1.aleo {
         f3.await();
         f4.await();
         f5.await();
+        f6.await();
 
         let key: u32 = params.key_;
 

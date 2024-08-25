@@ -1,4 +1,4 @@
-import multi_token_support_program.aleo;
+import multi_token_support_programv1.aleo;
 import aleox_store_v1.aleo;
 import aleox_market_v1.aleo;
 import aleox_oracle_v1.aleo;
@@ -161,7 +161,7 @@ program aleox_deposit_inner_v1.aleo {
     }
 
     async function finalizeExecuteDeposit(f: Future, marketToken: field, marketTokensSupply: u128) {
-        let metadata: TokenMetadata = multi_token_support_program.aleo/registered_tokens.get(marketToken);
+        let metadata: TokenMetadata = multi_token_support_programv1.aleo/registered_tokens.get(marketToken);
         assert_eq(marketTokensSupply, metadata.supply);
 
         f.await();

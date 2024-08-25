@@ -5,7 +5,7 @@
   "license": "MIT",
   "dependencies": [
     {
-      "name": "multi_token_support_program.aleo",
+      "name": "multi_token_support_programv1.aleo",
       "location": "network",
       "network": "testnet"
     },
