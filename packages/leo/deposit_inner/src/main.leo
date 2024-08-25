@@ -36,8 +36,9 @@ program aleox_deposit_inner_v1.aleo {
         public generalConfig: GeneralConfig,
         public marketConfig: MarketConfig,
         public marketData: MarketData,
+        public virtualMarketData: VirtualMarketData,
         public prices: Prices,
-    ) -> (u128, MarketData, Future) {
+    ) -> (u128, MarketData, VirtualMarketData, Future) {
         let tokenInPrice: Price = params_.isLong ? prices.longToken : prices.shortToken;
         let tokenOutPrice: Price = params_.isLong ? prices.shortToken : prices.longToken;
         let marketTokensSupply: u128 = params.marketTokensSupply;
@@ -92,13 +93,15 @@ program aleox_deposit_inner_v1.aleo {
                 marketTokensSupply
             );
 
-            let marketData2: MarketData = aleox_market_v1.aleo/applyDeltaToPoolAmount(
+            let (marketData2, virtualMarketData1): (MarketData, VirtualMarketData) = aleox_market_v1.aleo/applyDeltaToPoolAmount(
                 marketConfig,
                 marketData,
+                virtualMarketData,
                 !params_.isLong,
                 positiveImpactAmount,
             );
             marketData = marketData2;
+            virtualMarketData = virtualMarketData1;
 
             aleox_market_v1.aleo/validatePoolAmount(
                 marketConfig,
@@ -129,13 +132,15 @@ program aleox_deposit_inner_v1.aleo {
             marketTokensSupply,
         );
 
-        let marketData4: MarketData = aleox_market_v1.aleo/applyDeltaToPoolAmount(
+        let (marketData4, virtualMarketData2): (MarketData, VirtualMarketData) = aleox_market_v1.aleo/applyDeltaToPoolAmount(
             marketConfig,
             marketData,
+            virtualMarketData,
             params_.isLong,
             (fees.amountAfterFees + fees.feeAmountForPool) as i128,
         );
         marketData = marketData4;
+        virtualMarketData = virtualMarketData2;
 
         validatePoolUsdForDeposit(
             marketConfig,
@@ -152,7 +157,7 @@ program aleox_deposit_inner_v1.aleo {
 
         let f: Future = aleox_market_v1.aleo/mintMarketTokens(market.marketToken, params_.receiver, mintAmount);
 
-        return (mintAmount, marketData, finalizeExecuteDeposit(f, market.marketToken, marketTokensSupply));
+        return (mintAmount, marketData, virtualMarketData, finalizeExecuteDeposit(f, market.marketToken, marketTokensSupply));
     }
 
     async function finalizeExecuteDeposit(f: Future, marketToken: field, marketTokensSupply: u128) {

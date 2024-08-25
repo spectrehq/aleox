@@ -1,0 +1,33 @@
+{
+  "program": "aleox_swap_inner_v1.aleo",
+  "version": "0.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "multi_token_support_program.aleo",
+      "location": "network",
+      "network": "testnet"
+    },
+    {
+      "name": "aleox_store_v1.aleo",
+      "location": "local",
+      "path": "../store"
+    },
+    {
+      "name": "aleox_market_v1.aleo",
+      "location": "local",
+      "path": "../market"
+    },
+    {
+      "name": "aleox_pricing_v1.aleo",
+      "location": "local",
+      "path": "../pricing"
+    },
+    {
+      "name": "aleox_fee_v1.aleo",
+      "location": "local",
+      "path": "../fee"
+    }
+  ]
+}

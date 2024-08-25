@@ -54,7 +54,7 @@ program aleox_oracle_signers_v1.aleo {
 
     struct Reports {
         signers: [address; 3],
-        reports: [Report; 6],
+        reports: [Report; 9],
     }
 
     struct SignerReport {
@@ -65,15 +65,15 @@ program aleox_oracle_signers_v1.aleo {
         maxPrice: u128,
     }
 
-    async transition validatePrices(public params: Reports) -> (Prices, Future) {
-        let reports: [Report; 6] = params.reports;
+    async transition validatePrices(public params: Reports) -> (Oracle, Future) {
+        let reports: [Report; 9] = params.reports;
         let signers: [address; 3] = params.signers;
 
         // Validate that the signers are unique.
         assert(signers[0u8] != signers[1u8] && signers[0u8] != signers[2u8] && signers[1u8] != signers[2u8]);
 
         let maxOracleBlock: u32 = 0u32;
-        for i: u8 in 0u8..6u8 {
+        for i: u8 in 0u8..9u8 {
             let report: Report = reports[i];
 
             let oracleBlock: u32 = report.oracleBlock;
@@ -98,18 +98,21 @@ program aleox_oracle_signers_v1.aleo {
             assert(report.maxPrices[1u8] <= report.maxPrices[2u8]);
         }
 
-        let tokenPrices: [TokenPrice; 6] = [
+        let tokenPrices: [TokenPrice; 9] = [
             TokenPrice { token: reports[0u8].token, min: getMedian(reports[0u8].minPrices), max: getMedian(reports[0u8].maxPrices), block_: reports[0u8].oracleBlock },
             TokenPrice { token: reports[1u8].token, min: getMedian(reports[1u8].minPrices), max: getMedian(reports[1u8].maxPrices), block_: reports[1u8].oracleBlock },
             TokenPrice { token: reports[2u8].token, min: getMedian(reports[2u8].minPrices), max: getMedian(reports[2u8].maxPrices), block_: reports[2u8].oracleBlock },
             TokenPrice { token: reports[3u8].token, min: getMedian(reports[3u8].minPrices), max: getMedian(reports[3u8].maxPrices), block_: reports[3u8].oracleBlock },
             TokenPrice { token: reports[4u8].token, min: getMedian(reports[4u8].minPrices), max: getMedian(reports[4u8].maxPrices), block_: reports[4u8].oracleBlock },
             TokenPrice { token: reports[5u8].token, min: getMedian(reports[5u8].minPrices), max: getMedian(reports[5u8].maxPrices), block_: reports[5u8].oracleBlock },
+            TokenPrice { token: reports[6u8].token, min: getMedian(reports[6u8].minPrices), max: getMedian(reports[6u8].maxPrices), block_: reports[6u8].oracleBlock },
+            TokenPrice { token: reports[7u8].token, min: getMedian(reports[7u8].minPrices), max: getMedian(reports[7u8].maxPrices), block_: reports[7u8].oracleBlock },
+            TokenPrice { token: reports[8u8].token, min: getMedian(reports[8u8].minPrices), max: getMedian(reports[8u8].maxPrices), block_: reports[8u8].oracleBlock },
         ];
 
-        let prices: Prices = aleox_oracle_v1.aleo/getPrices(tokenPrices);
+        let oracle: Oracle = aleox_oracle_v1.aleo/getPrices(tokenPrices);
 
-        return (prices, finalizeValidatePrices(signers, maxOracleBlock));
+        return (oracle, finalizeValidatePrices(signers, maxOracleBlock));
     }
 
     async function finalizeValidatePrices(signers: [address; 3], oracleBlock: u32) {

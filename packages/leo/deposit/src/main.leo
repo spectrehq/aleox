@@ -203,13 +203,16 @@ program aleox_deposit_v1.aleo {
         public generalConfig: GeneralConfig,
         public marketConfig: MarketConfig,
         public marketData: MarketData,
-        public prices: Prices,
-    ) -> (u128, MarketData, Future) {
+        public virtualMarketData: VirtualMarketData,
+        public oracle: Oracle,
+    ) -> (u128, MarketData, VirtualMarketData, Future) {
         assert(!marketConfig.isMarketDisabled);
 
-        assert(prices.minBlock >= deposit.updatedAtBlock &&
-            prices.maxBlock <= deposit.updatedAtBlock + generalConfig.requestExpirationBlocks
+        assert(oracle.minBlock >= deposit.updatedAtBlock &&
+            oracle.maxBlock <= deposit.updatedAtBlock + generalConfig.requestExpirationBlocks
         );
+
+        let prices: Prices = oracle.prices;
 
         let (marketData1, f1): (MarketData, Future) = aleox_market_v1.aleo/distributePositionImpactPool(
             marketConfig,
@@ -249,6 +252,9 @@ program aleox_deposit_v1.aleo {
 
         let priceImpactUsd: i128 = aleox_pricing_v1.aleo/getPriceImpactUsd(
             market,
+            marketConfig,
+            marketData,
+            virtualMarketData,
             prices,
             longTokenUsd as i128,
             shortTokenUsd as i128,
@@ -257,7 +263,7 @@ program aleox_deposit_v1.aleo {
         let priceImpactUsdAbs: u128 = priceImpactUsd.abs() as u128;
         let priceImpactUsdSign: i128 = priceImpactUsd >= 0i128 ? 1i128 : -1i128;
 
-        let (mintAmount1, marketData3, f3): (u128, MarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+        let (mintAmount1, marketData3, virtualMarketData1, f3): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
             params,
             ExecuteDepositParams_ {
                 account: deposit.account,
@@ -270,11 +276,13 @@ program aleox_deposit_v1.aleo {
             generalConfig,
             marketConfig,
             marketData,
+            virtualMarketData,
             prices,
         );
         marketData = marketData3;
+        virtualMarketData = virtualMarketData1;
 
-        let (mintAmount2, marketData4, f4): (u128, MarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
+        let (mintAmount2, marketData4, virtualMarketData2, f4): (u128, MarketData, VirtualMarketData, Future) = aleox_deposit_inner_v1.aleo/executeDeposit(
             params,
             ExecuteDepositParams_ {
                 account: deposit.account,
@@ -287,9 +295,11 @@ program aleox_deposit_v1.aleo {
             generalConfig,
             marketConfig,
             marketData,
+            virtualMarketData,
             prices,
         );
         marketData = marketData4;
+        virtualMarketData = virtualMarketData2;
 
         let receivedMarketTokens: u128 = mintAmount1 + mintAmount2;
         assert(receivedMarketTokens >= deposit.minMarketTokens);
@@ -301,7 +311,7 @@ program aleox_deposit_v1.aleo {
 
         // TODO: payExecutionFee
 
-        return (receivedMarketTokens, marketData, finalizeExecuteDeposit(
+        return (receivedMarketTokens, marketData, virtualMarketData, finalizeExecuteDeposit(
             f1,
             f2,
             f3,

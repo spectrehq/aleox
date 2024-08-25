@@ -136,8 +136,6 @@ program aleox_market_v1.aleo {
             claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
 
         return (marketData, finalizeDistributePositionImpactPool(atBlock));
@@ -289,8 +287,6 @@ program aleox_market_v1.aleo {
             claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
     }
 
@@ -435,9 +431,7 @@ program aleox_market_v1.aleo {
 
         assert(totalOpenInterest > 0u128);
 
-        let fundingExponentFactor: u128 = marketConfig.fundingExponentFactor;
-
-        let diffUsdAfterExponent: u128 = diffUsd.pow(fundingExponentFactor as u32);
+        let diffUsdAfterExponent: u128 = diffUsd.pow(marketConfig.fundingExponentFactor);
         let diffUsdToOpenInterestFactor: u128 = diffUsdAfterExponent / totalOpenInterest;
 
         if (marketConfig.fundingIncreaseFactorPerSecond == 0u128) {
@@ -600,8 +594,6 @@ program aleox_market_v1.aleo {
             claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
     }
 
@@ -661,8 +653,8 @@ program aleox_market_v1.aleo {
         if (optimalUsageFactor > 0u128) {
         }
 
-        let borrowingExponentFactor: u128 = isLong ? marketConfig.borrowingExponentFactor.long : marketConfig.borrowingExponentFactor.short;
-        let reservedUsdAfterExponent: u128 = reservedUsd.pow(borrowingExponentFactor as u32);
+        let borrowingExponentFactor: u32 = isLong ? marketConfig.borrowingExponentFactor.long : marketConfig.borrowingExponentFactor.short;
+        let reservedUsdAfterExponent: u128 = reservedUsd.pow(borrowingExponentFactor);
 
         let reservedUsdToPoolFactor: u128 = reservedUsdAfterExponent / poolUsd;
         let borrowingFactor: u128 = isLong ? marketConfig.borrowingFactor.long : marketConfig.borrowingFactor.short;
@@ -1044,8 +1036,6 @@ program aleox_market_v1.aleo {
             claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
 
         return (marketData, impactAmount, cappedDiffUsd);
@@ -1142,9 +1132,10 @@ program aleox_market_v1.aleo {
     transition applyDeltaToPoolAmount(
         public marketConfig: MarketConfig,
         public marketData: MarketData,
+        public virtualMarketData: VirtualMarketData,
         public isLong: bool,
         public delta: i128,
-    ) -> MarketData {
+    ) -> (MarketData, VirtualMarketData) {
         let poolAmount: u128 = isLong ? marketData.poolAmount.long : marketData.poolAmount.short;
         poolAmount = applyDeltaToUint(poolAmount, delta);
 
@@ -1169,62 +1160,44 @@ program aleox_market_v1.aleo {
             claimableCollateralAmount: marketData.claimableCollateralAmount,
             claimableFeeAmount: marketData.claimableFeeAmount,
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
 
-        let (a, marketData_, b): (bool, MarketData, u128) = applyDeltaToVirtualInventoryForSwaps(
+        let (a, virtualMarketData_, b): (bool, VirtualMarketData, u128) = applyDeltaToVirtualInventoryForSwaps(
             marketConfig,
-            marketData,
+            virtualMarketData,
             isLong,
             delta,
         );
+        virtualMarketData = virtualMarketData_;
 
-        return marketData_;
+        return (marketData, virtualMarketData);
     }
 
     inline applyDeltaToVirtualInventoryForSwaps(
         marketConfig: MarketConfig,
-        marketData: MarketData,
+        virtualMarketData: VirtualMarketData,
         isLong: bool,
         delta: i128,
-    ) -> (bool, MarketData, u128) {
+    ) -> (bool, VirtualMarketData, u128) {
         if (marketConfig.virtualMarketId == 0field) {
-            return (false, marketData, 0u128);
+            return (false, virtualMarketData, 0u128);
         }
 
         let virtualInventoryForSwaps: u128 = isLong ?
-            marketData.virtualInventoryForSwaps.long :
-            marketData.virtualInventoryForSwaps.short;
+            virtualMarketData.virtualInventoryForSwaps.long :
+            virtualMarketData.virtualInventoryForSwaps.short;
 
         virtualInventoryForSwaps = applyBoundedDeltaToUint(virtualInventoryForSwaps, delta);
 
-        marketData = MarketData {
-            positionImpactPoolAmount: marketData.positionImpactPoolAmount,
-            positionImpactPoolDistAtBlock: marketData.positionImpactPoolDistAtBlock,
-            swapImpactPoolAmount: marketData.swapImpactPoolAmount,
-            savedFundingFactorPerSecond: marketData.savedFundingFactorPerSecond,
-            fundingUpdatedAtBlock: marketData.fundingUpdatedAtBlock,
-            openInterest: marketData.openInterest,
-            openInterestInTokens: marketData.openInterestInTokens,
-            collateralSum: marketData.collateralSum,
-            fundingFeeAmountPerSize: marketData.fundingFeeAmountPerSize,
-            claimableFundingAmountPerSize: marketData.claimableFundingAmountPerSize,
-            cumulativeBorrowingFactor: marketData.cumulativeBorrowingFactor,
-            cumulativeBFUpdatedAtBlock: marketData.cumulativeBFUpdatedAtBlock,
-            totalBorrowing: marketData.totalBorrowing,
-            poolAmount: marketData.poolAmount,
-            claimableCollateralAmount: marketData.claimableCollateralAmount,
-            claimableFeeAmount: marketData.claimableFeeAmount,
-            affiliateRewardAmount: marketData.affiliateRewardAmount,
+        virtualMarketData = VirtualMarketData {
             virtualInventoryForSwaps: CollateralData {
-                long: isLong ? virtualInventoryForSwaps : marketData.virtualInventoryForSwaps.long,
-                short: isLong ? marketData.virtualInventoryForSwaps.short : virtualInventoryForSwaps,
+                long: isLong ? virtualInventoryForSwaps : virtualMarketData.virtualInventoryForSwaps.long,
+                short: isLong ? virtualMarketData.virtualInventoryForSwaps.short : virtualInventoryForSwaps,
             },
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
+            virtualInventoryForPositions: virtualMarketData.virtualInventoryForPositions,
         };
 
-        return (true, marketData, virtualInventoryForSwaps);
+        return (true, virtualMarketData, virtualInventoryForSwaps);
     }
 
     transition validatePoolAmount(

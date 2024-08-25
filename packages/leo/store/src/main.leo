@@ -1,4 +1,6 @@
 program aleox_store_v1.aleo {
+    const ZERO_FIELD: field = 0field;
+
     struct GeneralConfig {
         feeReceiver: address,
         holdingAddress: address,
@@ -20,15 +22,16 @@ program aleox_store_v1.aleo {
         isMarketDisabled: bool,
         minMarketTokensForFirstDeposit: u128,
         minCollateralFactor: u128,
-        positionImpactExponentFactor: u128,
+        positionImpactExponentFactor: u32, // integer, no precision
         maxPositionImpactFactorForLiq: u128, // maxPositionImpactFactorForLiquidations
-        swapImpactExponentFactor: u128,
+        swapImpactFactor: IsPositiveData,
+        swapImpactExponentFactor: u32,
         atomicSwapFeeFactor: u128,
         minPositionImpactPoolAmount: u128,
         positionImpactPoolDistRate: u128, // positionImpactPoolDistributionRate
 
         fundingFactor: u128,
-        fundingExponentFactor: u128,
+        fundingExponentFactor: u32, // integer, no precision
         fundingIncreaseFactorPerSecond: u128,
         fundingDecreaseFactorPerSecond: u128,
         minFundingFactorPerSecond: u128,
@@ -38,7 +41,7 @@ program aleox_store_v1.aleo {
 
         optimalUsageFactor: PositionData,
         borrowingFactor: PositionData,
-        borrowingExponentFactor: PositionData,
+        borrowingExponentFactor: ExponentFactorData,  // integer, no precision
 
         maxPnlFactorForTraders: PositionData,
         maxPnlFactorForAdl: PositionData,
@@ -196,8 +199,6 @@ program aleox_store_v1.aleo {
         claimableCollateralAmount: CollateralData,
         claimableFeeAmount: CollateralData,
         affiliateRewardAmount: CollateralData,
-        virtualInventoryForSwaps: CollateralData,
-        virtualInventoryForPositions: i128,
     }
 
     struct CollateralPositionData {
@@ -222,8 +223,26 @@ program aleox_store_v1.aleo {
         short: u32,
     }
 
+    struct IsPositiveData {
+        is: u128,
+        not: u128,
+    }
+
+    struct ExponentFactorData {
+        long: u32,
+        short: u32,
+    }
+
     // market => MarketData
     mapping marketData: field => MarketData;
+
+    struct VirtualMarketData {
+        virtualInventoryForSwaps: CollateralData,
+        virtualInventoryForPositions: i128,
+    }
+
+    // virtual market => VirtualMarketData
+    mapping virtualMarketData: field => VirtualMarketData;
 
     async transition setGeneralConfig(public cfg: GeneralConfig) -> Future {
         return finalizeSetGeneralConfig(cfg);
@@ -239,5 +258,15 @@ program aleox_store_v1.aleo {
 
     async function finalizeSetMarketData(market: field, data: MarketData) {
         marketData.set(market, data);
+    }
+
+    async transition setVirtualMarketData(public virtualMarket: field, public data: VirtualMarketData) -> Future {
+        return finalizeSetVirtualMarketData(virtualMarket, data);
+    }
+
+    async function finalizeSetVirtualMarketData(virtualMarket: field, data: VirtualMarketData) {
+        if (virtualMarket != ZERO_FIELD) {
+            virtualMarketData.set(virtualMarket, data);
+        }
     }
 }

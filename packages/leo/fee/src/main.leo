@@ -27,8 +27,6 @@ program aleox_fee_v1.aleo {
                 short: isLong ? marketData.claimableFeeAmount.short : marketData.claimableFeeAmount.short + delta,
             },
             affiliateRewardAmount: marketData.affiliateRewardAmount,
-            virtualInventoryForSwaps: marketData.virtualInventoryForSwaps,
-            virtualInventoryForPositions: marketData.virtualInventoryForPositions,
         };
     }
 }

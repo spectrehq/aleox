@@ -1,0 +1,13 @@
+{
+  "program": "aleox_swap_v1.aleo",
+  "version": "0.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "aleox_swap_inner_v1.aleo",
+      "location": "local",
+      "path": "../swap_inner"
+    }
+  ]
+}

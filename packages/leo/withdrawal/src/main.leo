@@ -194,14 +194,17 @@ program aleox_withdrawal_v1.aleo {
         public generalConfig: GeneralConfig,
         public marketConfig: MarketConfig,
         public marketData: MarketData,
-        public prices: Prices,
+        public virtualMarketData: VirtualMarketData,
+        public oracle: Oracle,
     ) -> (MarketData, Future) {
         assert(!marketConfig.isMarketDisabled);
         assert(withdrawal.marketTokenAmount > 0u128);
 
-        assert(prices.minBlock >= withdrawal.updatedAtBlock &&
-            prices.maxBlock <= withdrawal.updatedAtBlock + generalConfig.requestExpirationBlocks
+        assert(oracle.minBlock >= withdrawal.updatedAtBlock &&
+            oracle.maxBlock <= withdrawal.updatedAtBlock + generalConfig.requestExpirationBlocks
         );
+
+        let prices: Prices = oracle.prices;
 
         let (marketData1, f1): (MarketData, Future) = aleox_market_v1.aleo/distributePositionImpactPool(
             marketConfig,
@@ -266,19 +269,25 @@ program aleox_withdrawal_v1.aleo {
         let shortTokenPoolAmountDelta: u128 = shortTokenOutputAmount - shortTokenFees.feeAmountForPool;
         shortTokenOutputAmount = shortTokenFees.amountAfterFees;
 
-        marketData = aleox_market_v1.aleo/applyDeltaToPoolAmount(
+        let (marketData3, virtualMarketData1): (MarketData, VirtualMarketData) = aleox_market_v1.aleo/applyDeltaToPoolAmount(
             marketConfig,
             marketData,
+            virtualMarketData,
             true, // isLong
             -(longTokenPoolAmountDelta as i128)
         );
+        marketData = marketData3;
+        virtualMarketData = virtualMarketData1;
 
-        marketData = aleox_market_v1.aleo/applyDeltaToPoolAmount(
+        let (marketData4, virtualMarketData2): (MarketData, VirtualMarketData) = aleox_market_v1.aleo/applyDeltaToPoolAmount(
             marketConfig,
             marketData,
+            virtualMarketData,
             false, // isLong
             -(shortTokenPoolAmountDelta as i128)
         );
+        marketData = marketData4;
+        virtualMarketData = virtualMarketData2;
 
         aleox_market_v1.aleo/validateReserve(
             marketConfig,
